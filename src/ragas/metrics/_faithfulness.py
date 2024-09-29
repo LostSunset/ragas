@@ -26,8 +26,7 @@ if t.TYPE_CHECKING:
 
 
 class HasSegmentMethod(t.Protocol):
-    def segment(self, text) -> t.Any:
-        ...
+    def segment(self, text) -> t.Any: ...
 
 
 logger = logging.getLogger(__name__)
@@ -333,7 +332,7 @@ class Faithfulness(MetricWithLLM, SingleTurnMetric):
 
 
 @dataclass
-class FaithulnesswithHHEM(Faithfulness):
+class FaithfulnesswithHHEM(Faithfulness):
     name: str = "faithfulness_with_hhem"  # type: ignore
     device: str = "cpu"
     batch_size: int = 10

@@ -1,3 +1,4 @@
+import logging
 import typing as t
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -5,8 +6,10 @@ from dataclasses import dataclass, field
 from ragas.experimental.testset.graph import KnowledgeGraph, Node, Relationship
 from ragas.llms import BaseRagasLLM, llm_factory
 
+logger = logging.getLogger(__name__)
 
-class BaseGraphTransformations(ABC):
+
+class BaseGraphTransformation(ABC):
     """
     Abstract base class for graph transformations on a KnowledgeGraph.
     """
@@ -46,8 +49,26 @@ class BaseGraphTransformations(ABC):
         """
         return kg
 
+    @abstractmethod
+    def generate_execution_plan(self, kg: KnowledgeGraph) -> t.List[t.Coroutine]:
+        """
+        Generates a list of coroutines to be executed in sequence by the Executor. This
+        coroutine will, upon execution, write the transformation into the KnowledgeGraph.
 
-class Extractor(BaseGraphTransformations):
+        Parameters
+        ----------
+        kg : KnowledgeGraph
+            The knowledge graph to be transformed.
+
+        Returns
+        -------
+        t.List[t.Coroutine]
+            A list of coroutines to be executed in parallel.
+        """
+        pass
+
+
+class Extractor(BaseGraphTransformation):
     """
     Abstract base class for extractors that transform a KnowledgeGraph by extracting
     specific properties from its nodes.
@@ -108,6 +129,35 @@ class Extractor(BaseGraphTransformations):
         """
         pass
 
+    def generate_execution_plan(self, kg: KnowledgeGraph) -> t.List[t.Coroutine]:
+        """
+        Generates a list of coroutines to be executed in parallel by the Executor.
+
+        Parameters
+        ----------
+        kg : KnowledgeGraph
+            The knowledge graph to be transformed.
+
+        Returns
+        -------
+        t.List[t.Coroutine]
+            A list of coroutines to be executed in parallel.
+        """
+
+        async def apply_extract(node: Node):
+            property_name, property_value = await self.extract(node)
+            if node.get_property(property_name) is None:
+                node.add_property(property_name, property_value)
+            else:
+                logger.warning(
+                    "Property '%s' already exists in node '%.6s'. Skipping!",
+                    property_name,
+                    node.id,
+                )
+
+        filtered = self.filter(kg)
+        return [apply_extract(node) for node in filtered.nodes]
+
 
 @dataclass
 class LLMBasedExtractor(Extractor):
@@ -115,7 +165,7 @@ class LLMBasedExtractor(Extractor):
     merge_if_possible: bool = True
 
 
-class Splitter(BaseGraphTransformations):
+class Splitter(BaseGraphTransformation):
     """
     Abstract base class for splitters that transform a KnowledgeGraph by splitting
     its nodes into smaller chunks.
@@ -173,15 +223,38 @@ class Splitter(BaseGraphTransformations):
         """
         pass
 
+    def generate_execution_plan(self, kg: KnowledgeGraph) -> t.List[t.Coroutine]:
+        """
+        Generates a list of coroutines to be executed in parallel by the Executor.
 
-class RelationshipBuilder(BaseGraphTransformations):
+        Parameters
+        ----------
+        kg : KnowledgeGraph
+            The knowledge graph to be transformed.
+
+        Returns
+        -------
+        t.List[t.Coroutine]
+            A list of coroutines to be executed in parallel.
+        """
+
+        async def apply_split(node: Node):
+            nodes, relationships = await self.split(node)
+            kg.nodes.extend(nodes)
+            kg.relationships.extend(relationships)
+
+        filtered = self.filter(kg)
+        return [apply_split(node) for node in filtered.nodes]
+
+
+class RelationshipBuilder(BaseGraphTransformation):
     """
     Abstract base class for building relationships in a KnowledgeGraph.
 
     Methods
     -------
     transform(kg: KnowledgeGraph) -> t.List[Relationship]
-        Abstract method to transform the KnowledgeGraph by building relationships.
+        Transforms the KnowledgeGraph by building relationships.
     """
 
     @abstractmethod
@@ -201,12 +274,24 @@ class RelationshipBuilder(BaseGraphTransformations):
         """
         pass
 
+    def generate_execution_plan(self, kg: KnowledgeGraph) -> t.List[t.Coroutine]:
+        """
+        Generates a list of coroutines to be executed in parallel by the Executor.
 
-class Parallel:
-    def __init__(self, *transformations: BaseGraphTransformations):
-        self.transformations = list(transformations)
+        Parameters
+        ----------
+        kg : KnowledgeGraph
+            The knowledge graph to be transformed.
 
+        Returns
+        -------
+        t.List[t.Coroutine]
+            A list of coroutines to be executed in parallel.
+        """
 
-class Sequences:
-    def __init__(self, *transformations: t.Union[BaseGraphTransformations, Parallel]):
-        self.transformations = list(transformations)
+        async def apply_build_relationships(kg: KnowledgeGraph):
+            relationships = await self.transform(kg)
+            kg.relationships.extend(relationships)
+
+        filtered = self.filter(kg)
+        return [apply_build_relationships(filtered)]
