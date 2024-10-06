@@ -8,13 +8,13 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 
 from ragas.dataset_schema import MultiTurnSample, SingleTurnSample
-from ragas.experimental.prompt import PydanticPrompt
 from ragas.metrics.base import (
     MetricType,
     MetricWithLLM,
     MultiTurnMetric,
     SingleTurnMetric,
 )
+from ragas.prompt import PydanticPrompt
 
 if t.TYPE_CHECKING:
     from langchain_core.callbacks.base import Callbacks
@@ -143,7 +143,7 @@ class AspectCritic(MetricWithLLM, SingleTurnMetric, MultiTurnMetric):
     async def _single_turn_ascore(
         self: t.Self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
-        row = sample.dict()
+        row = sample.to_dict()
         return await self._ascore(row, callbacks)
 
     async def _ascore(self: t.Self, row: t.Dict, callbacks: Callbacks) -> float:

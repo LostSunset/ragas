@@ -9,7 +9,7 @@ from functools import lru_cache, wraps
 
 import requests
 from appdirs import user_data_dir
-from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 
 from ragas.utils import get_debug_mode
 
@@ -97,6 +97,7 @@ class TestsetGenerationEvent(BaseEvent):
     num_rows: int
     language: str
     is_experiment: bool = False
+    version: str = "3"  # the version of testset generation pipeline
 
 
 @silent

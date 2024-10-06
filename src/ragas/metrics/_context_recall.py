@@ -5,10 +5,10 @@ import typing as t
 from dataclasses import dataclass, field
 
 import numpy as np
-from langchain_core.pydantic_v1 import BaseModel
+from pydantic import BaseModel, RootModel
 
 from ragas.dataset_schema import SingleTurnSample
-from ragas.llms.output_parser import RagasoutputParser, get_json_format_instructions
+from ragas.llms.output_parser import RagasOutputParserOld, get_json_format_instructions
 from ragas.llms.prompt import Prompt
 from ragas.metrics._string import NonLLMStringSimilarity
 from ragas.metrics.base import MetricType, MetricWithLLM, SingleTurnMetric, ensembler
@@ -29,17 +29,19 @@ class ContextRecallClassificationAnswer(BaseModel):
     reason: str
 
 
-class ContextRecallClassificationAnswers(BaseModel):
-    __root__: t.List[ContextRecallClassificationAnswer]
+class ContextRecallClassificationAnswers(RootModel):
+    root: t.List[ContextRecallClassificationAnswer]
 
     def dicts(self) -> t.List[t.Dict]:
-        return self.dict()["__root__"]
+        return self.model_dump()
 
 
 _classification_output_instructions = get_json_format_instructions(
     ContextRecallClassificationAnswers
 )
-_output_parser = RagasoutputParser(pydantic_object=ContextRecallClassificationAnswers)
+_output_parser = RagasOutputParserOld(
+    pydantic_object=ContextRecallClassificationAnswers
+)
 
 
 CONTEXT_RECALL_RA = Prompt(
@@ -177,7 +179,7 @@ class LLMContextRecall(MetricWithLLM, SingleTurnMetric):
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
-        row = sample.dict()
+        row = sample.to_dict()
         return await self._ascore(row, callbacks)
 
     async def _ascore(self, row: t.Dict, callbacks: Callbacks) -> float:
@@ -224,7 +226,7 @@ class ContextRecall(LLMContextRecall):
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
-        row = sample.dict()
+        row = sample.to_dict()
         return await self._ascore(row, callbacks)
 
     @deprecated(since="0.2", removal="0.3", alternative="LLMContextRecall")

@@ -5,10 +5,10 @@ import typing as t
 from dataclasses import dataclass, field
 
 import numpy as np
-from langchain_core.pydantic_v1 import BaseModel
+from pydantic import BaseModel
 
 from ragas.dataset_schema import SingleTurnSample
-from ragas.llms.output_parser import RagasoutputParser, get_json_format_instructions
+from ragas.llms.output_parser import RagasOutputParserOld, get_json_format_instructions
 from ragas.llms.prompt import Prompt, PromptValue
 from ragas.metrics._answer_similarity import AnswerSimilarity
 from ragas.metrics._faithfulness import (
@@ -39,7 +39,7 @@ class AnswerCorrectnessClassification(BaseModel):
 
 
 _output_instructions = get_json_format_instructions(AnswerCorrectnessClassification)
-_output_parser = RagasoutputParser(pydantic_object=AnswerCorrectnessClassification)
+_output_parser = RagasOutputParserOld(pydantic_object=AnswerCorrectnessClassification)
 
 CORRECTNESS_INSTRUCTIONS = """\
 Given a ground truth and an answer statements, analyze each statement and classify them in one of the following categories:
@@ -219,7 +219,7 @@ class AnswerCorrectness(MetricWithLLM, MetricWithEmbeddings, SingleTurnMetric):
     async def _single_turn_ascore(
         self: t.Self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
-        row = sample.dict()
+        row = sample.to_dict()
         score = await self._ascore(row, callbacks)
         return score
 

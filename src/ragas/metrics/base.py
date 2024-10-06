@@ -15,29 +15,22 @@ from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 
+from pysbd import Segmenter
+
 from ragas.callbacks import new_group
 from ragas.dataset_schema import MultiTurnSample, SingleTurnSample
 from ragas.executor import is_event_loop_running
+from ragas.prompt import PromptMixin
 from ragas.run_config import RunConfig
-from ragas.utils import deprecated
+from ragas.utils import RAGAS_SUPPORTED_LANGUAGE_CODES, deprecated
 
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
 
     from ragas.embeddings import BaseRagasEmbeddings
     from ragas.llms import BaseRagasLLM
-
-import inspect
-
-from pysbd import Segmenter
-from pysbd.languages import LANGUAGE_CODES
-
-from ragas.experimental.prompt import PydanticPrompt as Prompt
-
 logger = logging.getLogger(__name__)
 
-
-LANGUAGE_CODES = {v.__name__.lower(): k for k, v in LANGUAGE_CODES.items()}
 
 VALID_COLUMNS = [
     "user_input",
@@ -151,7 +144,7 @@ class Metric(ABC):
 
 
 @dataclass
-class MetricWithLLM(Metric):
+class MetricWithLLM(Metric, PromptMixin):
     llm: t.Optional[BaseRagasLLM] = None
 
     def init(self, run_config: RunConfig):
@@ -165,26 +158,6 @@ class MetricWithLLM(Metric):
                 f"Metric '{self.name}' has no valid LLM provided (self.llm is None). Please initantiate a the metric with an LLM to run."  # noqa
             )
         self.llm.set_run_config(run_config)
-
-    def get_prompts(self) -> t.Dict[str, Prompt]:
-        prompts = {}
-        for name, value in inspect.getmembers(self):
-            if isinstance(value, Prompt):
-                prompts.update({name: value})
-        return prompts
-
-    def set_prompts(self, **prompts):
-        available_prompts = self.get_prompts()
-        for key, value in prompts.items():
-            if key not in available_prompts:
-                raise ValueError(
-                    f"Prompt with name '{key}' does not exist in the metric {self.name}. Use get_prompts() to see available prompts."
-                )
-            if not isinstance(value, Prompt):
-                raise ValueError(
-                    f"Prompt with name '{key}' must be an instance of 'Prompt'"
-                )
-            setattr(self, key, value)
 
 
 @dataclass
@@ -211,8 +184,19 @@ class SingleTurnMetric(Metric):
         callbacks: Callbacks = None,
     ) -> float:
         callbacks = callbacks or []
-        rm, group_cm = new_group(self.name, inputs=sample.dict(), callbacks=callbacks)
+        rm, group_cm = new_group(
+            self.name, inputs=sample.model_dump(), callbacks=callbacks
+        )
         try:
+            if is_event_loop_running():
+                try:
+                    import nest_asyncio
+
+                    nest_asyncio.apply()
+                except ImportError:
+                    raise ImportError(
+                        "It seems like your running this in a jupyter-like environment. Please install nest_asyncio with `pip install nest_asyncio` to make it work."
+                    )
             loop = asyncio.get_event_loop()
             score = loop.run_until_complete(
                 self._single_turn_ascore(sample=sample, callbacks=group_cm)
@@ -233,7 +217,7 @@ class SingleTurnMetric(Metric):
         timeout: t.Optional[float] = None,
     ) -> float:
         callbacks = callbacks or []
-        row = sample.dict()
+        row = sample.model_dump()
         rm, group_cm = new_group(self.name, inputs=row, callbacks=callbacks)
         try:
             score = await asyncio.wait_for(
@@ -264,8 +248,19 @@ class MultiTurnMetric(Metric):
         callbacks: Callbacks = None,
     ) -> float:
         callbacks = callbacks or []
-        rm, group_cm = new_group(self.name, inputs=sample.dict(), callbacks=callbacks)
+        rm, group_cm = new_group(
+            self.name, inputs=sample.model_dump(), callbacks=callbacks
+        )
         try:
+            if is_event_loop_running():
+                try:
+                    import nest_asyncio
+
+                    nest_asyncio.apply()
+                except ImportError:
+                    raise ImportError(
+                        "It seems like your running this in a jupyter-like environment. Please install nest_asyncio with `pip install nest_asyncio` to make it work."
+                    )
             loop = asyncio.get_event_loop()
             score = loop.run_until_complete(
                 self._multi_turn_ascore(sample=sample, callbacks=group_cm)
@@ -286,7 +281,9 @@ class MultiTurnMetric(Metric):
         timeout: t.Optional[float] = None,
     ) -> float:
         callbacks = callbacks or []
-        rm, group_cm = new_group(self.name, inputs=sample.dict(), callbacks=callbacks)
+        rm, group_cm = new_group(
+            self.name, inputs=sample.model_dump(), callbacks=callbacks
+        )
         try:
             score = await asyncio.wait_for(
                 self._multi_turn_ascore(sample=sample, callbacks=group_cm),
@@ -352,12 +349,14 @@ def get_segmenter(
     Get a sentence segmenter for a given language
     """
     language = language.lower()
-    if language not in LANGUAGE_CODES:
+    if language not in RAGAS_SUPPORTED_LANGUAGE_CODES:
         raise ValueError(
-            f"Language '{language}' not supported. Supported languages: {LANGUAGE_CODES.keys()}"
+            f"Language '{language}' not supported. Supported languages: {RAGAS_SUPPORTED_LANGUAGE_CODES.keys()}"
         )
     return Segmenter(
-        language=LANGUAGE_CODES[language], clean=clean, char_span=char_span
+        language=RAGAS_SUPPORTED_LANGUAGE_CODES[language],
+        clean=clean,
+        char_span=char_span,
     )
 
 

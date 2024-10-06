@@ -8,7 +8,7 @@ from typing import Dict
 from langchain.pydantic_v1 import BaseModel
 
 from ragas.dataset_schema import SingleTurnSample
-from ragas.llms.output_parser import RagasoutputParser, get_json_format_instructions
+from ragas.llms.output_parser import RagasOutputParserOld, get_json_format_instructions
 from ragas.llms.prompt import Prompt
 from ragas.metrics.base import MetricType, MetricWithLLM, SingleTurnMetric
 
@@ -31,21 +31,21 @@ class GenerateAnswersResponse(BaseModel):
 
 
 _output_instructions_question_generation = get_json_format_instructions(
-    pydantic_object=GenerateQuestionsResponse
+    pydantic_object=GenerateQuestionsResponse  # type: ignore
 )
 _output_instructions_answer_generation = get_json_format_instructions(
-    pydantic_object=GenerateAnswersResponse
+    pydantic_object=GenerateAnswersResponse  # type: ignore
 )
 _output_instructions_keyphrase_extraction = get_json_format_instructions(
-    pydantic_object=ExtractKeyphrasesResponse
+    pydantic_object=ExtractKeyphrasesResponse  # type: ignore
 )
-_output_parser_question_generation = RagasoutputParser(
+_output_parser_question_generation = RagasOutputParserOld(
     pydantic_object=GenerateQuestionsResponse
 )
-_output_parser_answer_generation = RagasoutputParser(
+_output_parser_answer_generation = RagasOutputParserOld(
     pydantic_object=GenerateAnswersResponse
 )
-_output_parser_keyphrase_extraction = RagasoutputParser(
+_output_parser_keyphrase_extraction = RagasOutputParserOld(
     pydantic_object=ExtractKeyphrasesResponse
 )
 
@@ -168,7 +168,7 @@ class SummarizationScore(MetricWithLLM, SingleTurnMetric):
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
-        row = sample.dict()
+        row = sample.to_dict()
         return await self._ascore(row, callbacks)
 
     async def _ascore(self, row: Dict, callbacks: Callbacks) -> float:

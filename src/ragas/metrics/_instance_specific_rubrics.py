@@ -4,7 +4,6 @@ import typing as t
 from dataclasses import dataclass, field
 
 from ragas.dataset_schema import MultiTurnSample, SingleTurnSample
-from ragas.experimental.prompt import PydanticPrompt
 from ragas.metrics._domain_specific_rubrics import (
     MultiTurnWithoutReferenceInput,
     MultiTurnWithoutReferencePrompt,
@@ -20,6 +19,7 @@ from ragas.metrics.base import (
     MultiTurnMetric,
     SingleTurnMetric,
 )
+from ragas.prompt import PydanticPrompt
 
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
@@ -72,7 +72,7 @@ class InstanceRubricsWithReference(MetricWithLLM, SingleTurnMetric, MultiTurnMet
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
-        row = sample.dict()
+        row = sample.to_dict()
         return await self._ascore(row, callbacks)
 
     async def _multi_turn_ascore(
@@ -144,7 +144,7 @@ class InstanceRubricsScoreWithoutReference(
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
-        row = sample.dict()
+        row = sample.to_dict()
         return await self._ascore(row, callbacks)
 
     async def _multi_turn_ascore(

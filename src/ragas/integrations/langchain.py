@@ -132,7 +132,7 @@ class EvaluatorChain(Chain, RunEvaluator):
         # validate each example
         required_columns = self.metric.required_columns.get("SINGLE_TURN", [])
         for col in required_columns:
-            if col not in input.features():
+            if col not in input.get_features():
                 raise ValueError(
                     f'"{col}" is required in each example'
                     f"for the metric[{self.metric.name}] you have chosen."

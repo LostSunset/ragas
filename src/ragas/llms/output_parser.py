@@ -4,7 +4,7 @@ import typing as t
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.pydantic_v1 import BaseModel
+from pydantic import BaseModel
 
 from ragas.llms import BaseRagasLLM
 from ragas.llms.prompt import Prompt, PromptValue
@@ -53,7 +53,7 @@ def get_json_format_instructions(pydantic_object: t.Type[TBaseModel]) -> str:
     return resp
 
 
-class RagasoutputParser(PydanticOutputParser):
+class RagasOutputParserOld(PydanticOutputParser):
     async def aparse(  # type: ignore
         self, result: str, prompt: PromptValue, llm: BaseRagasLLM, max_retries: int = 1
     ):

@@ -5,13 +5,14 @@ dependencies = [
     "datasets",
     "tiktoken",
     "langchain",
-    "langchain-core<0.3",
+    "langchain-core",
     "langchain-community",
     "langchain_openai",
-    "openai>1",
-    "pysbd>=0.3.4",
     "nest-asyncio",
     "appdirs",
+    "pydantic>=2",
+    "openai>1",
+    "pysbd>=0.3.4",
 ]
 dynamic = ["version", "readme"]
 
@@ -35,6 +36,8 @@ docs = [
     "mkdocs-gen-files",
     "mkdocs-literate-nav",
     "mkdocs-section-index",
+    "mkdocs-git-committers-plugin-2",
+    "mkdocs-git-revision-date-localized-plugin",
 ]
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -56,4 +59,7 @@ build-backend = "setuptools.build_meta"
 write_to = "src/ragas/_version.py"
 
 [tool.pytest.ini_options]
-addopts = "-n 4"
+addopts = "-n 0"
+asyncio_default_fixture_loop_scope = "function"
+[pytest]
+testpaths = ["tests"]

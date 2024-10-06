@@ -1,23 +1,36 @@
+from __future__ import annotations
+
 import json
 import typing as t
 
-from datasets import Dataset
-from langchain_core.pydantic_v1 import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 from ragas.messages import AIMessage, HumanMessage, ToolCall, ToolMessage
 
+if t.TYPE_CHECKING:
+    from datasets import Dataset as HFDataset
+    from pandas import DataFrame as PandasDataframe
+
 
 class BaseEvalSample(BaseModel):
-    def dict(self, **kwargs):
-        row = super().dict(**kwargs)
-        row = {k: v for k, v in row.items() if v is not None}
-        return row
+    def to_dict(self) -> t.Dict:
+        """
+        Get the dictionary representation of the sample without attributes that are None.
+        """
+        return self.model_dump(exclude_none=True)
 
-    def features(self):
-        return set(self.dict().keys())
+    def get_features(self) -> t.List[str]:
+        """
+        Get the features of the sample that are not None.
+        """
+        return list(self.to_dict().keys())
 
 
 class SingleTurnSample(BaseEvalSample):
+    """
+    Represents evaluation samples for single-turn interactions.
+    """
+
     user_input: t.Optional[str] = None
     retrieved_contexts: t.Optional[t.List[str]] = None
     reference_contexts: t.Optional[t.List[str]] = None
@@ -34,8 +47,12 @@ class MultiTurnSample(BaseEvalSample):
     rubrics: t.Optional[t.Dict[str, str]] = None
     reference_topics: t.Optional[t.List[str]] = None
 
-    @validator("user_input")
-    def validate_messages(cls, messages):
+    @field_validator("user_input")
+    @classmethod
+    def validate_user_input(
+        cls,
+        messages: t.List[t.Union[HumanMessage, AIMessage, ToolMessage]],
+    ) -> t.List[t.Union[HumanMessage, AIMessage, ToolMessage]]:
         if not (
             isinstance(m, (HumanMessage, AIMessage, ToolMessage)) for m in messages
         ):
@@ -59,7 +76,7 @@ class MultiTurnSample(BaseEvalSample):
         return messages
 
     def to_messages(self):
-        return [m.dict() for m in self.user_input]
+        return [m.model_dump() for m in self.user_input]
 
     def pretty_repr(self):
         lines = []
@@ -72,8 +89,10 @@ class MultiTurnSample(BaseEvalSample):
 class EvaluationDataset(BaseModel):
     samples: t.List[BaseEvalSample]
 
-    @validator("samples")
-    def validate_samples(cls, samples):
+    @field_validator("samples")
+    def validate_samples(
+        cls, samples: t.List[BaseEvalSample]
+    ) -> t.List[BaseEvalSample]:
         if len(samples) == 0:
             return samples
 
@@ -86,8 +105,8 @@ class EvaluationDataset(BaseModel):
     def get_sample_type(self):
         return type(self.samples[0])
 
-    def to_hf_dataset(self):
-        rows = [sample.dict() for sample in self.samples]
+    def _to_list(self) -> t.List[t.Dict]:
+        rows = [sample.model_dump() for sample in self.samples]
 
         if self.get_sample_type() == MultiTurnSample:
             for sample in rows:
@@ -95,10 +114,31 @@ class EvaluationDataset(BaseModel):
                     if not isinstance(item["content"], str):
                         item["content"] = json.dumps(item["content"])
 
-        return Dataset.from_list(rows)
+        return rows
+
+    def to_hf_dataset(self) -> HFDataset:
+        try:
+            from datasets import Dataset as HFDataset
+        except ImportError:
+            raise ImportError(
+                "datasets is not installed. Please install it to use this function."
+            )
+
+        return HFDataset.from_list(self._to_list())
+
+    def to_pandas(self) -> PandasDataframe:
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError(
+                "pandas is not installed. Please install it to use this function."
+            )
+
+        data = self._to_list()
+        return pd.DataFrame(data)
 
     def features(self):
-        return self.samples[0].features()
+        return self.samples[0].get_features()
 
     @classmethod
     def from_list(cls, mapping: t.List[t.Dict]):

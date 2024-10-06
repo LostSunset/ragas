@@ -7,13 +7,13 @@ from dataclasses import dataclass, field
 import numpy as np
 from pydantic import BaseModel, Field
 
-from ragas.experimental.prompt import PydanticPrompt
 from ragas.metrics.base import (
     MetricType,
     MetricWithLLM,
     SingleTurnMetric,
     get_segmenter,
 )
+from ragas.prompt import PydanticPrompt
 
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
@@ -248,5 +248,5 @@ class FaithfulnessExperimental(MetricWithLLM, SingleTurnMetric):
     async def _single_turn_ascore(
         self: t.Self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
-        row = sample.dict()
+        row = sample.to_dict()
         return await self._ascore(row, callbacks)
