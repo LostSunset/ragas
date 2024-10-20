@@ -2,50 +2,88 @@ from __future__ import annotations
 
 import typing as t
 
-from pydantic import BaseModel
+from ragas.dataset_schema import (
+    BaseSample,
+    EvaluationDataset,
+    MultiTurnSample,
+    RagasDataset,
+    SingleTurnSample,
+)
 
-from ragas.dataset_schema import EvaluationDataset, MultiTurnSample, SingleTurnSample
 
-if t.TYPE_CHECKING:
-    from datasets import Dataset as HFDataset
-    from pandas import DataFrame as PandasDataframe
+class TestsetSample(BaseSample):
+    """
+    Represents a sample in a test set.
 
+    Attributes
+    ----------
+    eval_sample : Union[SingleTurnSample, MultiTurnSample]
+        The evaluation sample, which can be either a single-turn or multi-turn sample.
+    synthesizer_name : str
+        The name of the synthesizer used to generate this sample.
+    """
 
-class TestsetSample(BaseModel):
     eval_sample: t.Union[SingleTurnSample, MultiTurnSample]
     synthesizer_name: str
 
 
-class Testset(BaseModel):
+class Testset(RagasDataset[TestsetSample]):
+    """
+    Represents a test set containing multiple test samples.
+
+    Attributes
+    ----------
+    samples : List[TestsetSample]
+        A list of TestsetSample objects representing the samples in the test set.
+    """
+
     samples: t.List[TestsetSample]
 
     def to_evaluation_dataset(self) -> EvaluationDataset:
+        """
+        Converts the Testset to an EvaluationDataset.
+        """
         return EvaluationDataset(
             samples=[sample.eval_sample for sample in self.samples]
         )
 
-    def _to_list(self) -> t.List[t.Dict]:
-        eval_list = self.to_evaluation_dataset()._to_list()
-        testset_list_without_eval_sample = [
-            sample.model_dump(exclude={"eval_sample"}) for sample in self.samples
-        ]
-        testset_list = [
-            {**eval_sample, **sample}
-            for eval_sample, sample in zip(eval_list, testset_list_without_eval_sample)
-        ]
-        return testset_list
+    def to_list(self) -> t.List[t.Dict]:
+        """
+        Converts the Testset to a list of dictionaries.
+        """
+        list_dict = []
+        for sample in self.samples:
+            sample_dict = sample.eval_sample.model_dump(exclude_none=True)
+            sample_dict["synthesizer_name"] = sample.synthesizer_name
+            list_dict.append(sample_dict)
+        return list_dict
 
-    def to_pandas(self) -> PandasDataframe:
-        import pandas as pd
+    @classmethod
+    def from_list(cls, data: t.List[t.Dict]) -> Testset:
+        """
+        Converts a list of dictionaries to a Testset.
+        """
+        # first create the samples
+        samples = []
+        for sample in data:
+            synthesizer_name = sample["synthesizer_name"]
+            # remove the synthesizer name from the sample
+            sample.pop("synthesizer_name")
+            # the remaining sample is the eval_sample
+            eval_sample = sample
 
-        return pd.DataFrame(self._to_list())
+            # if user_input is a list it is MultiTurnSample
+            if "user_input" in eval_sample and not isinstance(
+                eval_sample.get("user_input"), list
+            ):
+                eval_sample = SingleTurnSample(**eval_sample)
+            else:
+                eval_sample = MultiTurnSample(**eval_sample)
 
-    def to_hf_dataset(self) -> HFDataset:
-        try:
-            from datasets import Dataset as HFDataset
-        except ImportError:
-            raise ImportError(
-                "datasets is not installed. Please install it to use this function."
+            samples.append(
+                TestsetSample(
+                    eval_sample=eval_sample, synthesizer_name=synthesizer_name
+                )
             )
-
-        return HFDataset.from_list(self._to_list())
+        # then create the testset
+        return Testset(samples=samples)

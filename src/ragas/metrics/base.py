@@ -1,10 +1,3 @@
-"""
-Q - question
-A - answer: generated_text from RAG pipeline
-C - contexts: context used for generation
-G - ground_truth: ground truth answer
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +10,7 @@ from enum import Enum
 
 from pysbd import Segmenter
 
-from ragas.callbacks import new_group
+from ragas.callbacks import ChainType, new_group
 from ragas.dataset_schema import MultiTurnSample, SingleTurnSample
 from ragas.executor import is_event_loop_running
 from ragas.prompt import PromptMixin
@@ -43,12 +36,35 @@ VALID_COLUMNS = [
 
 
 class MetricType(Enum):
+    """
+    Enumeration of metric types in Ragas.
+
+    Attributes
+    ----------
+    SINGLE_TURN : str
+        Represents a single-turn metric type.
+    MULTI_TURN : str
+        Represents a multi-turn metric type.
+    """
+
     SINGLE_TURN = "single_turn"
     MULTI_TURN = "multi_turn"
 
 
 @dataclass
 class Metric(ABC):
+    """
+    Abstract base class for metrics in Ragas.
+
+    Attributes
+    ----------
+    name : str
+        The name of the metric.
+    required_columns : Dict[str, Set[str]]
+        A dictionary mapping metric type names to sets of required column names. This is
+        a property and raises `ValueError` if columns are not in `VALID_COLUMNS`.
+    """
+
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(default_factory=dict)
 
     @property
@@ -69,32 +85,24 @@ class Metric(ABC):
         self._required_columns[metric_type] = columns
 
     @abstractmethod
-    def init(self, run_config: RunConfig):
-        """
-        This method will lazy initialize the model.
-        """
-        ...
-
-    def adapt(self, language: str, cache_dir: t.Optional[str] = None) -> None:
-        """
-        Adapt the metric to a different language.
-        """
-        raise NotImplementedError(
-            "adapt() is not implemented for {} metric".format(self.name)
-        )
-
-    def save(self, cache_dir: t.Optional[str] = None) -> None:
-        """
-        Save the metric to a path.
-        """
-        raise NotImplementedError(
-            "adapt() is not implemented for {} metric".format(self.name)
-        )
+    def init(self, run_config: RunConfig): ...
 
     @deprecated("0.2", removal="0.3", alternative="single_turn_ascore")
-    def score(self: t.Self, row: t.Dict, callbacks: Callbacks = None) -> float:
+    def score(self, row: t.Dict, callbacks: Callbacks = None) -> float:
+        """
+        Calculates the score for a single row of data.
+
+        Note
+        ----
+        This method is deprecated and will be removed in 0.3. Please use `single_turn_ascore` or `multi_turn_ascore` instead.
+        """
         callbacks = callbacks or []
-        rm, group_cm = new_group(self.name, inputs=row, callbacks=callbacks)
+        rm, group_cm = new_group(
+            self.name,
+            inputs=row,
+            callbacks=callbacks,
+            metadata={"type": ChainType.METRIC},
+        )
         try:
             if is_event_loop_running():
                 try:
@@ -118,13 +126,25 @@ class Metric(ABC):
 
     @deprecated("0.2", removal="0.3", alternative="single_turn_ascore")
     async def ascore(
-        self: t.Self,
+        self,
         row: t.Dict,
         callbacks: Callbacks = None,
         timeout: t.Optional[float] = None,
     ) -> float:
+        """
+        Asynchronously calculates the score for a single row of data.
+
+        Note
+        ----
+        This method is deprecated and will be removed in 0.3. Please use `single_turn_ascore` instead.
+        """
         callbacks = callbacks or []
-        rm, group_cm = new_group(self.name, inputs=row, callbacks=callbacks)
+        rm, group_cm = new_group(
+            self.name,
+            inputs=row,
+            callbacks=callbacks,
+            metadata={"type": ChainType.METRIC},
+        )
         try:
             score = await asyncio.wait_for(
                 self._ascore(row=row, callbacks=group_cm),
@@ -145,14 +165,18 @@ class Metric(ABC):
 
 @dataclass
 class MetricWithLLM(Metric, PromptMixin):
+    """
+    A metric class that uses a language model for evaluation.
+
+    Attributes
+    ----------
+    llm : Optional[BaseRagasLLM]
+        The language model used for the metric.
+    """
+
     llm: t.Optional[BaseRagasLLM] = None
 
     def init(self, run_config: RunConfig):
-        """
-        Init any models in the metric, this is invoked before evaluate()
-        to load all the models
-        Also check if the api key is valid for OpenAI and AzureOpenAI
-        """
         if self.llm is None:
             raise ValueError(
                 f"Metric '{self.name}' has no valid LLM provided (self.llm is None). Please initantiate a the metric with an LLM to run."  # noqa
@@ -165,11 +189,6 @@ class MetricWithEmbeddings(Metric):
     embeddings: t.Optional[BaseRagasEmbeddings] = None
 
     def init(self, run_config: RunConfig):
-        """
-        Init any models in the metric, this is invoked before evaluate()
-        to load all the models
-        Also check if the api key is valid for OpenAI and AzureOpenAI
-        """
         if self.embeddings is None:
             raise ValueError(
                 f"Metric '{self.name}' has no valid embeddings provided (self.embeddings is None). Please initantiate a the metric with an embeddings to run."  # noqa
@@ -178,14 +197,41 @@ class MetricWithEmbeddings(Metric):
 
 
 class SingleTurnMetric(Metric):
+    """
+    A metric class for evaluating single-turn interactions.
+
+    This class provides methods to score single-turn samples, both synchronously and asynchronously.
+    """
+
+    def _only_required_columns_single_turn(
+        self, sample: SingleTurnSample
+    ) -> SingleTurnSample:
+        """
+        Simplify the sample to only include the required columns.
+        """
+        required_columns = self.required_columns.get(MetricType.SINGLE_TURN.name, set())
+        if not required_columns:
+            return sample
+        return SingleTurnSample(**sample.model_dump(include=required_columns))
+
     def single_turn_score(
         self,
         sample: SingleTurnSample,
         callbacks: Callbacks = None,
     ) -> float:
+        """
+        Synchronously score a single-turn sample.
+
+        May raise ImportError if nest_asyncio is not installed in a Jupyter-like environment.
+        """
         callbacks = callbacks or []
+        # only get the required columns
+        sample = self._only_required_columns_single_turn(sample)
         rm, group_cm = new_group(
-            self.name, inputs=sample.model_dump(), callbacks=callbacks
+            self.name,
+            inputs=sample.to_dict(),
+            callbacks=callbacks,
+            metadata={"type": ChainType.METRIC},
         )
         try:
             if is_event_loop_running():
@@ -216,9 +262,20 @@ class SingleTurnMetric(Metric):
         callbacks: Callbacks = None,
         timeout: t.Optional[float] = None,
     ) -> float:
+        """
+        Asynchronously score a single-turn sample with an optional timeout.
+
+        May raise asyncio.TimeoutError if the scoring process exceeds the specified timeout.
+        """
         callbacks = callbacks or []
-        row = sample.model_dump()
-        rm, group_cm = new_group(self.name, inputs=row, callbacks=callbacks)
+        # only get the required columns
+        sample = self._only_required_columns_single_turn(sample)
+        rm, group_cm = new_group(
+            self.name,
+            inputs=sample.to_dict(),
+            callbacks=callbacks,
+            metadata={"type": ChainType.METRIC},
+        )
         try:
             score = await asyncio.wait_for(
                 self._single_turn_ascore(sample=sample, callbacks=group_cm),
@@ -238,18 +295,49 @@ class SingleTurnMetric(Metric):
         self,
         sample: SingleTurnSample,
         callbacks: Callbacks,
-    ) -> float: ...
+    ) -> float:
+        """
+        Abstract method to be implemented by subclasses for actual scoring logic.
+        """
+        ...
 
 
 class MultiTurnMetric(Metric):
+    """
+    A metric class for evaluating multi-turn conversations.
+
+    This class extends the base Metric class to provide functionality
+    for scoring multi-turn conversation samples.
+    """
+
+    def _only_required_columns_multi_turn(
+        self, sample: MultiTurnSample
+    ) -> MultiTurnSample:
+        """
+        Simplify the sample to only include the required columns.
+        """
+        required_columns = self.required_columns.get(MetricType.MULTI_TURN.name, set())
+        if not required_columns:
+            return sample
+        return MultiTurnSample(**sample.model_dump(include=required_columns))
+
     def multi_turn_score(
         self,
         sample: MultiTurnSample,
         callbacks: Callbacks = None,
     ) -> float:
+        """
+        Score a multi-turn conversation sample synchronously.
+
+        May raise ImportError if nest_asyncio is not installed in Jupyter-like environments.
+        """
         callbacks = callbacks or []
+        sample = self._only_required_columns_multi_turn(sample)
         rm, group_cm = new_group(
-            self.name, inputs=sample.model_dump(), callbacks=callbacks
+            self.name,
+            inputs=sample.to_dict(),
+            callbacks=callbacks,
+            metadata={"type": ChainType.METRIC},
         )
         try:
             if is_event_loop_running():
@@ -280,9 +368,19 @@ class MultiTurnMetric(Metric):
         callbacks: Callbacks = None,
         timeout: t.Optional[float] = None,
     ) -> float:
+        """
+        Score a multi-turn conversation sample asynchronously.
+
+        May raise asyncio.TimeoutError if the scoring process exceeds the specified timeout.
+        """
         callbacks = callbacks or []
+        sample = self._only_required_columns_multi_turn(sample)
+
         rm, group_cm = new_group(
-            self.name, inputs=sample.model_dump(), callbacks=callbacks
+            self.name,
+            inputs=sample.to_dict(),
+            callbacks=callbacks,
+            metadata={"type": ChainType.METRIC},
         )
         try:
             score = await asyncio.wait_for(
@@ -303,7 +401,11 @@ class MultiTurnMetric(Metric):
         self,
         sample: MultiTurnSample,
         callbacks: Callbacks,
-    ) -> float: ...
+    ) -> float:
+        """
+        Abstract method to be implemented by subclasses for actual multi-turn scoring logic.
+        """
+        ...
 
 
 class Ensember:
@@ -363,6 +465,9 @@ def get_segmenter(
 
 
 def is_reproducable(metric: Metric) -> bool:
+    """
+    Check if a metric is reproducible by checking if it has a `_reproducibility` attribute.
+    """
     return hasattr(metric, "_reproducibility")
 
 

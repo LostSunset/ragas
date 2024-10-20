@@ -8,12 +8,12 @@ import typing as t
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompt_values import StringPromptValue as PromptValue
 from pydantic import BaseModel
 
 from ragas._version import __version__
-from ragas.callbacks import new_group
+from ragas.callbacks import ChainType, new_group
 from ragas.exceptions import RagasOutputParserException
-from ragas.llms.prompt import PromptValue
 
 from .base import BasePrompt, StringIO, _check_if_language_is_supported
 from .utils import get_all_strings, update_strings
@@ -176,8 +176,9 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
             name=self.name,
             inputs={"data": processed_data},
             callbacks=callbacks,
+            metadata={"type": ChainType.RAGAS_PROMPT},
         )
-        prompt_value = PromptValue(prompt_str=self.to_string(processed_data))
+        prompt_value = PromptValue(text=self.to_string(processed_data))
         resp = await llm.generate(
             prompt_value,
             n=n,
@@ -215,7 +216,7 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
         return output
 
     async def adapt(
-        self, target_language: str, llm: BaseRagasLLM
+        self, target_language: str, llm: BaseRagasLLM, adapt_instruction: bool = False
     ) -> "PydanticPrompt[InputModel, OutputModel]":
         """
         Adapt the prompt to a new language.
@@ -244,6 +245,16 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
         new_prompt = copy.deepcopy(self)
         new_prompt.examples = translated_examples
         new_prompt.language = target_language
+
+        if adapt_instruction:
+            translated_instruction = await translate_statements_prompt.generate(
+                llm=llm,
+                data=ToTranslate(
+                    target_language=target_language, statements=[self.instruction]
+                ),
+            )
+            new_prompt.instruction = translated_instruction.statements[0]
+
         return new_prompt
 
     def __repr__(self):
@@ -260,6 +271,7 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
                 "language": self.language,
             },
             indent=2,
+            ensure_ascii=False,
         )[1:-1]
         return f"{self.__class__.__name__}({json_str})"
 
@@ -315,7 +327,7 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
         if os.path.exists(file_path):
             raise FileExistsError(f"The file '{file_path}' already exists.")
         with open(file_path, "w") as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f, indent=2, ensure_ascii=False)
             print(f"Prompt saved to {file_path}")
 
     @classmethod
@@ -395,6 +407,7 @@ class RagasOutputParser(PydanticOutputParser[OutputModel]):
                         output_string=output_string,
                         prompt_value=prompt_value.to_string(),
                     ),
+                    callbacks=retry_cb,
                 )
                 retry_rm.on_chain_end({"fixed_output_string": fixed_output_string})
                 return await self.parse_output_string(
@@ -420,7 +433,7 @@ class Translated(BaseModel):
 
 
 class TranslateStatements(PydanticPrompt[ToTranslate, Translated]):
-    instruction = "Translate the following statements to the target language."
+    instruction = "Translate the following statements to the target language. Ensure that the number of output data rows is equal to the number of input data rows."
     input_model = ToTranslate
     output_model = Translated
     examples = [

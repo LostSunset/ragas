@@ -15,16 +15,24 @@ from ragas.testset.graph import KnowledgeGraph, Node
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
 
-    from ragas.dataset_schema import BaseEvalSample
+    from ragas.dataset_schema import BaseSample
 
 
 class QueryLength(str, Enum):
+    """
+    Enumeration of query lengths. Available options are: LONG, MEDIUM, SHORT
+    """
+
     LONG = "long"
     MEDIUM = "medium"
     SHORT = "short"
 
 
 class QueryStyle(str, Enum):
+    """
+    Enumeration of query styles. Available options are: MISSPELLED, PERFECT_GRAMMAR, POOR_GRAMMAR, WEB_SEARCH_LIKE
+    """
+
     MISSPELLED = "Misspelled queries"
     PERFECT_GRAMMAR = "Perfect grammar"
     POOR_GRAMMAR = "Poor grammar"
@@ -32,6 +40,19 @@ class QueryStyle(str, Enum):
 
 
 class BaseScenario(BaseModel):
+    """
+    Base class for representing a scenario for generating test samples.
+
+    Attributes
+    ----------
+    nodes : List[Node]
+        List of nodes involved in the scenario.
+    style : QueryStyle
+        The style of the query.
+    length : QueryLength
+        The length of the query.
+    """
+
     nodes: t.List[Node]
     style: QueryStyle
     length: QueryLength
@@ -42,6 +63,10 @@ Scenario = t.TypeVar("Scenario", bound=BaseScenario)
 
 @dataclass
 class BaseSynthesizer(ABC, t.Generic[Scenario], PromptMixin):
+    """
+    Base class for synthesizing scenarios and samples.
+    """
+
     name: str = ""
     llm: BaseRagasLLM = field(default_factory=llm_factory)
 
@@ -75,7 +100,7 @@ class BaseSynthesizer(ABC, t.Generic[Scenario], PromptMixin):
 
     async def generate_sample(
         self, scenario: Scenario, callbacks: t.Optional[Callbacks] = None
-    ) -> BaseEvalSample:
+    ) -> BaseSample:
         callbacks = callbacks or []
 
         # new group for Sample Generation
@@ -92,5 +117,5 @@ class BaseSynthesizer(ABC, t.Generic[Scenario], PromptMixin):
     @abstractmethod
     async def _generate_sample(
         self, scenario: Scenario, callbacks: Callbacks
-    ) -> BaseEvalSample:
+    ) -> BaseSample:
         pass

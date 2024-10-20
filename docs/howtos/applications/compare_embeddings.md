@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Compare Embeddings for retriever
 
 The performance of the retriever is a critical and influential factor that determines the overall effectiveness of a Retrieval Augmented Generation (RAG) system. In particular, the quality of the embeddings used plays a pivotal role in determining the quality of the retrieved content.
@@ -72,7 +77,7 @@ test_answers = [[item] for item in test_df['answer'].values.tolist()]
 Here I am using llama-index to build a basic RAG pipeline with my documents. The goal here is to collect retrieved contexts and generated answer for each of the test questions from your pipeline. Ragas has integrations with various RAG frameworks which makes evaluating them easier using ragas.
 
 !!! note
-    refer to [langchain-tutorial](../integrations/langchain.ipynb) see how to evaluate using langchain
+    refer to [langchain-tutorial](../integrations/_langchain.md) see how to evaluate using langchain
 
 ```python
 

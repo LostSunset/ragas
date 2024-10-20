@@ -20,15 +20,29 @@ if t.TYPE_CHECKING:
     from langchain_core.documents import Document as LCDocument
     from langchain_core.language_models import BaseLanguageModel as LangchainLLM
 
+    from ragas.embeddings.base import BaseRagasEmbeddings
+    from ragas.llms.base import BaseRagasLLM
     from ragas.testset.synthesizers import QueryDistribution
     from ragas.testset.synthesizers.base import BaseScenario
 
 
 RAGAS_TESTSET_GENERATION_GROUP_NAME = "ragas testset generation"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class TestsetGenerator:
+    """
+    Generates an evaluation dataset based on given scenarios and parameters.
+
+    Attributes
+    ----------
+    llm : BaseRagasLLM
+        The language model to use for the generation process.
+    knowledge_graph : KnowledgeGraph, default empty
+        The knowledge graph to use for the generation process.
+    """
+
     llm: BaseRagasLLM
     knowledge_graph: KnowledgeGraph = field(default_factory=KnowledgeGraph)
 
@@ -37,22 +51,42 @@ class TestsetGenerator:
         cls,
         llm: LangchainLLM,
         knowledge_graph: t.Optional[KnowledgeGraph] = None,
-    ):
+    ) -> TestsetGenerator:
+        """
+        Creates a `TestsetGenerator` from a Langchain LLMs.
+        """
         knowledge_graph = knowledge_graph or KnowledgeGraph()
         return cls(LangchainLLMWrapper(llm), knowledge_graph)
 
     def generate_with_langchain_docs(
         self,
         documents: t.Sequence[LCDocument],
-        test_size: int,
+        testset_size: int,
         transforms: t.Optional[Transforms] = None,
+        transforms_llm: t.Optional[BaseRagasLLM] = None,
+        transforms_embedding_model: t.Optional[BaseRagasEmbeddings] = None,
         query_distribution: t.Optional[QueryDistribution] = None,
         run_config: t.Optional[RunConfig] = None,
         callbacks: t.Optional[Callbacks] = None,
         with_debugging_logs=False,
         raise_exceptions: bool = True,
     ) -> Testset:
-        transforms = transforms or default_transforms()
+        """
+        Generates an evaluation dataset based on given scenarios and parameters.
+        """
+        if transforms is None:
+            # use default transforms
+            if transforms_llm is None:
+                transforms_llm = self.llm
+                logger.info("Using TestGenerator.llm for transforms")
+            if transforms_embedding_model is None:
+                raise ValueError(
+                    "embedding_model must be provided for default_transforms. Alternatively you can provide your own transforms through the `transforms` parameter."
+                )
+            transforms = default_transforms(
+                llm=transforms_llm or self.llm,
+                embedding_model=transforms_embedding_model,
+            )
 
         # convert the documents to Ragas nodes
         nodes = []
@@ -73,7 +107,7 @@ class TestsetGenerator:
         self.knowledge_graph = kg
 
         return self.generate(
-            test_size=test_size,
+            testset_size=testset_size,
             query_distribution=query_distribution,
             run_config=run_config,
             callbacks=callbacks,
@@ -83,7 +117,7 @@ class TestsetGenerator:
 
     def generate(
         self,
-        test_size: int,
+        testset_size: int,
         query_distribution: t.Optional[QueryDistribution] = None,
         run_config: t.Optional[RunConfig] = None,
         callbacks: t.Optional[Callbacks] = None,
@@ -95,7 +129,7 @@ class TestsetGenerator:
 
         Parameters
         ----------
-        test_size : int
+        testset_size : int
             The number of samples to generate.
         query_distribution : Optional[QueryDistribution], optional
             A list of tuples containing scenario simulators and their probabilities.
@@ -130,7 +164,7 @@ class TestsetGenerator:
         # new group for Testset Generation
         testset_generation_rm, testset_generation_grp = new_group(
             name=RAGAS_TESTSET_GENERATION_GROUP_NAME,
-            inputs={"test_size": test_size},
+            inputs={"testset_size": testset_size},
             callbacks=callbacks,
         )
 
@@ -143,7 +177,7 @@ class TestsetGenerator:
             patch_logger("ragas.experimental.testset.transforms", logging.DEBUG)
 
         splits, _ = calculate_split_values(
-            [prob for _, prob in query_distribution], test_size
+            [prob for _, prob in query_distribution], testset_size
         )
         # new group for Generation of Scenarios
         scenario_generation_rm, scenario_generation_grp = new_group(
@@ -161,7 +195,7 @@ class TestsetGenerator:
         )
         # generate samples
         splits, _ = calculate_split_values(
-            [prob for _, prob in query_distribution], test_size
+            [prob for _, prob in query_distribution], testset_size
         )
         for i, (scenario, _) in enumerate(query_distribution):
             exec.submit(scenario.generate_scenarios, splits[i], self.knowledge_graph)
@@ -212,7 +246,7 @@ class TestsetGenerator:
                     e.__class__.__name__.lower() for e, _ in query_distribution
                 ],
                 evolution_percentages=[p for _, p in query_distribution],
-                num_rows=test_size,
+                num_rows=testset_size,
                 language="english",
             )
         )

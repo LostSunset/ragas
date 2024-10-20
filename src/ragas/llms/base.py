@@ -20,9 +20,8 @@ from ragas.run_config import RunConfig, add_async_retry, add_retry
 
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
+    from langchain_core.prompt_values import PromptValue
     from llama_index.core.base.llms.base import BaseLLM
-
-    from ragas.llms.prompt import PromptValue
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +87,7 @@ class BaseRagasLLM(ABC):
         """Generate text using the given event loop."""
 
         if temperature is None:
-            temperature = 1e-8
+            temperature = self.get_temperature(n)
 
         if is_async:
             agenerate_text_with_retry = add_async_retry(
@@ -280,7 +279,7 @@ class LlamaIndexLLMWrapper(BaseRagasLLM):
         callbacks: Callbacks = None,
     ) -> LLMResult:
         if temperature is None:
-            temperature = 1e-8
+            temperature = self.get_temperature(n)
 
         kwargs = self.check_args(n, temperature, stop, callbacks)
         li_response = await self.llm.acomplete(prompt.to_string(), **kwargs)
@@ -294,6 +293,26 @@ def llm_factory(
     default_headers: t.Optional[t.Dict[str, str]] = None,
     base_url: t.Optional[str] = None,
 ) -> BaseRagasLLM:
+    """
+    Create and return a BaseRagasLLM instance. Used for running default LLMs used
+    in Ragas (OpenAI).
+
+    Parameters
+    ----------
+    model : str, optional
+        The name of the model to use, by default "gpt-4o-mini".
+    run_config : RunConfig, optional
+        Configuration for the run, by default None.
+    default_headers : dict of str, optional
+        Default headers to be used in API requests, by default None.
+    base_url : str, optional
+        Base URL for the API, by default None.
+
+    Returns
+    -------
+    BaseRagasLLM
+        An instance of BaseRagasLLM configured with the specified parameters.
+    """
     timeout = None
     if run_config is not None:
         timeout = run_config.timeout
