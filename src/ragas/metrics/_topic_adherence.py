@@ -133,7 +133,7 @@ AI: You're welcome! Feel free to ask if you need more information."""
 
 @dataclass
 class TopicAdherenceScore(MetricWithLLM, MultiTurnMetric):
-    name: str = "topic_adherence"  # type: ignore
+    name: str = "topic_adherence"
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(
         default_factory=lambda: {
             MetricType.MULTI_TURN: {
@@ -187,13 +187,13 @@ class TopicAdherenceScore(MetricWithLLM, MultiTurnMetric):
         false_negatives = sum(~topic_answered_verdict & topic_classifications)
 
         if self.mode == "precision":
-            return true_positives / (true_positives + false_positives)
+            return true_positives / (true_positives + false_positives + 1e-10)
         elif self.mode == "recall":
-            return true_positives / (true_positives + false_negatives)
+            return true_positives / (true_positives + false_negatives + 1e-10)
         else:
-            precision = true_positives / (true_positives + false_positives)
-            recall = true_positives / (true_positives + false_negatives)
-            return 2 * (precision * recall) / (precision + recall)
+            precision = true_positives / (true_positives + false_positives + 1e-10)
+            recall = true_positives / (true_positives + false_negatives + 1e-10)
+            return 2 * (precision * recall) / (precision + recall + 1e-10)
 
     async def _ascore(self, row: t.Dict, callbacks: Callbacks) -> float:
         return await self._multi_turn_ascore(MultiTurnSample(**row), callbacks)

@@ -25,11 +25,12 @@ all = [
     "rapidfuzz",
     "pandas",
     "datacompy",
+    "llama_index",
 ]
 docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material",
-    "mkdocs-jupyter",
+    "mkdocs-material[imaging]",
     "mkdocstrings[python]",
     "mkdocs-glightbox",
     "mkdocs-autorefs",

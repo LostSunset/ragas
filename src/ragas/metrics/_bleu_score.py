@@ -11,12 +11,13 @@ from ragas.run_config import RunConfig
 
 @dataclass
 class BleuScore(SingleTurnMetric):
-    name: str = "bleu_score"  # type: ignore
+    name: str = "bleu_score"
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(
         default_factory=lambda: {MetricType.SINGLE_TURN: {"reference", "response"}}
     )
     weights: t.Tuple[float, ...] = (0.25, 0.25, 0.25, 0.25)
     sentence_segmenter: t.Optional[HasSegmentMethod] = None
+    language: str = "english"
 
     def __post_init__(self):
         try:
@@ -26,7 +27,8 @@ class BleuScore(SingleTurnMetric):
             raise ImportError(
                 "nltk is required for bleu score. Please install it using `pip install nltk`"
             )
-        self.segmenter = get_segmenter()
+        if not self.sentence_segmenter:
+            self.sentence_segmenter = get_segmenter(language=self.language, clean=False)
         self.word_tokenizer = word_tokenize
         self.corpus_bleu = corpus_bleu
 
@@ -36,8 +38,13 @@ class BleuScore(SingleTurnMetric):
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
-        reference_sentences = self.segmenter.segment(sample.reference)
-        response_sentences = self.segmenter.segment(sample.response)
+
+        assert (
+            self.sentence_segmenter is not None
+        ), "Sentence segmenter is not initialized"
+
+        reference_sentences = self.sentence_segmenter.segment(sample.reference)
+        response_sentences = self.sentence_segmenter.segment(sample.response)
 
         reference = [
             [self.word_tokenizer(reference)] for reference in reference_sentences

@@ -66,77 +66,88 @@ class TitleExtractorPrompt(PydanticPrompt[StringIO, StringIO]):
 
 
 class Headlines(BaseModel):
-    headlines: t.Dict[str, t.List[str]]
+    headlines: t.List[str]
 
 
 class HeadlinesExtractorPrompt(PydanticPrompt[StringIO, Headlines]):
-    instruction: str = "Extract the headlines from the given text."
+    instruction: str = "Extract only level 2 and level 3 headings from the given text."
+
     input_model: t.Type[StringIO] = StringIO
     output_model: t.Type[Headlines] = Headlines
     examples: t.List[t.Tuple[StringIO, Headlines]] = [
         (
             StringIO(
                 text="""\
-Some Title
-1. Introduction and Related Work
+                Introduction
+                Overview of the topic...
 
-1.1 Conditional Computation
-Exploiting scale in both training data and model size has been central to the success of deep learning...
-1.2 Our Approach: The Sparsely-Gated Mixture-of-Experts Layer
-Our approach to conditional computation is to introduce a new type of general purpose neural network component...
-1.3 Related Work on Mixtures of Experts
-Since its introduction more than two decades ago (Jacobs et al., 1991; Jordan & Jacobs, 1994), the mixture-of-experts approach..
+                Main Concepts
+                Explanation of core ideas...
 
-2. The Sparsely-Gated Mixture-of-Experts Layer
-2.1 Architecture
-The sparsely-gated mixture-of-experts layer is a feedforward neural network layer that consists of a number of expert networks and a single gating network...
-""",
+                Detailed Analysis
+                Techniques and methods for analysis...
+
+                Subsection: Specialized Techniques
+                Further details on specialized techniques...
+
+                Future Directions
+                Insights into upcoming trends...
+
+                Subsection: Next Steps in Research
+                Discussion of new areas of study...
+
+                Conclusion
+                Final remarks and summary.
+                """
             ),
             Headlines(
-                headlines={
-                    "1. Introduction and Related Work": [
-                        "1.1 Conditional Computation",
-                        "1.2 Our Approach: The Sparsely-Gated Mixture-of-Experts Layer",
-                        "1.3 Related Work on Mixtures of Experts",
-                    ],
-                    "2. The Sparsely-Gated Mixture-of-Experts Layer": [
-                        "2.1 Architecture"
-                    ],
-                },
+                headlines=[
+                    "Main Concepts",
+                    "Detailed Analysis",
+                    "Subsection: Specialized Techniques",
+                    "Future Directions",
+                    "Subsection: Next Steps in Research",
+                ]
             ),
         ),
     ]
 
 
-class NamedEntities(BaseModel):
-    ORG: t.List[str]
-    LOC: t.List[str]
-    PER: t.List[str]
-    MISC: t.List[str]
-
-
 class NEROutput(BaseModel):
-    entities: NamedEntities
+    entities: t.List[str]
 
 
-class NERPrompt(PydanticPrompt[StringIO, NEROutput]):
-    instruction: str = "Extract named entities from the given text."
-    input_model: t.Type[StringIO] = StringIO
+class TextWithExtractionLimit(BaseModel):
+    text: str
+    max_num: int = 10
+
+
+class NERPrompt(PydanticPrompt[TextWithExtractionLimit, NEROutput]):
+    instruction: str = (
+        "Extract the named entities from the given text, limiting the output to the top entities. "
+        "Ensure the number of entities does not exceed the specified maximum."
+    )
+    input_model: t.Type[TextWithExtractionLimit] = TextWithExtractionLimit
     output_model: t.Type[NEROutput] = NEROutput
-    examples: t.List[t.Tuple[StringIO, NEROutput]] = [
+    examples: t.List[t.Tuple[TextWithExtractionLimit, NEROutput]] = [
         (
-            StringIO(
-                text="Artificial intelligence\n\nArtificial intelligence is transforming various industries by automating tasks that previously required human intelligence. From healthcare to finance, AI is being used to analyze vast amounts of data quickly and accurately. This technology is also driving innovations in areas like self-driving cars and personalized recommendations."
+            TextWithExtractionLimit(
+                text="""Elon Musk, the CEO of Tesla and SpaceX, announced plans to expand operations to new locations in Europe and Asia.
+                This expansion is expected to create thousands of jobs, particularly in cities like Berlin and Shanghai.""",
+                max_num=10,
             ),
             NEROutput(
-                entities=NamedEntities(
-                    ORG=["Artificial intelligence"],
-                    LOC=["healthcare", "finance"],
-                    PER=[],
-                    MISC=["self-driving cars", "personalized recommendations"],
-                )
+                entities=[
+                    "Elon Musk",
+                    "Tesla",
+                    "SpaceX",
+                    "Europe",
+                    "Asia",
+                    "Berlin",
+                    "Shanghai",
+                ]
             ),
-        )
+        ),
     ]
 
 
@@ -253,10 +264,118 @@ class NERExtractor(LLMBasedExtractor):
 
     property_name: str = "entities"
     prompt: NERPrompt = NERPrompt()
+    max_num_entities: int = 10
 
-    async def extract(self, node: Node) -> t.Tuple[str, t.Dict[str, t.List[str]]]:
+    async def extract(self, node: Node) -> t.Tuple[str, t.List[str]]:
         node_text = node.get_property("page_content")
         if node_text is None:
-            return self.property_name, {}
+            return self.property_name, []
+        result = await self.prompt.generate(
+            self.llm,
+            data=TextWithExtractionLimit(text=node_text, max_num=self.max_num_entities),
+        )
+        return self.property_name, result.entities
+
+
+class TopicDescription(BaseModel):
+    description: str
+
+
+class TopicDescriptionPrompt(PydanticPrompt[StringIO, TopicDescription]):
+    instruction: str = (
+        "Provide a concise description of the main topic(s) discussed in the following text."
+    )
+    input_model: t.Type[StringIO] = StringIO
+    output_model: t.Type[TopicDescription] = TopicDescription
+    examples: t.List[t.Tuple[StringIO, TopicDescription]] = [
+        (
+            StringIO(
+                text="Quantum Computing\n\nQuantum computing leverages the principles of quantum mechanics to perform complex computations more efficiently than classical computers. It has the potential to revolutionize fields like cryptography, material science, and optimization problems by solving tasks that are currently intractable for classical systems."
+            ),
+            TopicDescription(
+                description="An introduction to quantum computing and its potential to outperform classical computers in complex computations, impacting areas such as cryptography and material science."
+            ),
+        )
+    ]
+
+
+@dataclass
+class TopicDescriptionExtractor(LLMBasedExtractor):
+    """
+    Extracts a concise description of the main topic(s) discussed in the given text.
+
+    Attributes
+    ----------
+    property_name : str
+        The name of the property to extract.
+    prompt : TopicDescriptionPrompt
+        The prompt used for extraction.
+    """
+
+    property_name: str = "topic_description"
+    prompt: PydanticPrompt = TopicDescriptionPrompt()
+
+    async def extract(self, node: Node) -> t.Tuple[str, t.Any]:
+        node_text = node.get_property("page_content")
+        if node_text is None:
+            return self.property_name, None
         result = await self.prompt.generate(self.llm, data=StringIO(text=node_text))
-        return self.property_name, result.entities.model_dump()
+        return self.property_name, result.description
+
+
+class ThemesAndConcepts(BaseModel):
+    output: t.List[str]
+
+
+class ThemesAndConceptsExtractorPrompt(
+    PydanticPrompt[TextWithExtractionLimit, ThemesAndConcepts]
+):
+    instruction: str = "Extract the main themes and concepts from the given text."
+    input_model: t.Type[TextWithExtractionLimit] = TextWithExtractionLimit
+    output_model: t.Type[ThemesAndConcepts] = ThemesAndConcepts
+    examples: t.List[t.Tuple[TextWithExtractionLimit, ThemesAndConcepts]] = [
+        (
+            TextWithExtractionLimit(
+                text="Artificial intelligence is transforming industries by automating tasks requiring human intelligence. AI analyzes vast data quickly and accurately, driving innovations like self-driving cars and personalized recommendations.",
+                max_num=10,
+            ),
+            ThemesAndConcepts(
+                output=[
+                    "Artificial intelligence",
+                    "Automation",
+                    "Data analysis",
+                    "Innovation",
+                    "Self-driving cars",
+                    "Personalized recommendations",
+                ]
+            ),
+        )
+    ]
+
+
+@dataclass
+class ThemesExtractor(LLMBasedExtractor):
+    """
+    Extracts themes from the given text.
+
+    Attributes
+    ----------
+    property_name : str
+        The name of the property to extract. Defaults to "themes".
+    prompt : ThemesExtractorPrompt
+        The prompt used for extraction.
+    """
+
+    property_name: str = "themes"
+    prompt: ThemesAndConceptsExtractorPrompt = ThemesAndConceptsExtractorPrompt()
+    max_num_themes: int = 10
+
+    async def extract(self, node: Node) -> t.Tuple[str, t.List[str]]:
+        node_text = node.get_property("page_content")
+        if node_text is None:
+            return self.property_name, []
+        result = await self.prompt.generate(
+            self.llm,
+            data=TextWithExtractionLimit(text=node_text, max_num=self.max_num_themes),
+        )
+        return self.property_name, result.output

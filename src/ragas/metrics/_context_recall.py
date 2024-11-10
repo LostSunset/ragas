@@ -92,7 +92,7 @@ class LLMContextRecall(MetricWithLLM, SingleTurnMetric):
     name : str
     """
 
-    name: str = "context_recall"  # type: ignore
+    name: str = "context_recall"
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(
         default_factory=lambda: {
             MetricType.SINGLE_TURN: {
@@ -193,7 +193,7 @@ class ContextRecall(LLMContextRecall):
 
 @dataclass
 class NonLLMContextRecall(SingleTurnMetric):
-    name: str = "non_llm_context_recall"  # type: ignore
+    name: str = "non_llm_context_recall"
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(
         default_factory=lambda: {
             MetricType.SINGLE_TURN: {

@@ -13,11 +13,12 @@ class DistanceMeasure(Enum):
     LEVENSHTEIN = "levenshtein"
     HAMMING = "hamming"
     JARO = "jaro"
+    JARO_WINKLER = "jaro_winkler"
 
 
 @dataclass
 class ExactMatch(SingleTurnMetric):
-    name: str = "exact_match"  # type: ignore
+    name: str = "exact_match"
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(
         default_factory=lambda: {MetricType.SINGLE_TURN: {"reference", "response"}}
     )
@@ -36,7 +37,7 @@ class ExactMatch(SingleTurnMetric):
 
 @dataclass
 class StringPresence(SingleTurnMetric):
-    name: str = "string_present"  # type: ignore
+    name: str = "string_present"
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(
         default_factory=lambda: {MetricType.SINGLE_TURN: {"reference", "response"}}
     )
@@ -59,7 +60,7 @@ class StringPresence(SingleTurnMetric):
 
 @dataclass
 class NonLLMStringSimilarity(SingleTurnMetric):
-    name: str = "non_llm_string_similarity"  # type: ignore
+    name: str = "non_llm_string_similarity"
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(
         default_factory=lambda: {MetricType.SINGLE_TURN: {"reference", "response"}}
     )
@@ -77,6 +78,7 @@ class NonLLMStringSimilarity(SingleTurnMetric):
             DistanceMeasure.LEVENSHTEIN: distance.Levenshtein,
             DistanceMeasure.HAMMING: distance.Hamming,
             DistanceMeasure.JARO: distance.Jaro,
+            DistanceMeasure.JARO_WINKLER: distance.JaroWinkler,
         }
 
     def init(self, run_config: RunConfig):

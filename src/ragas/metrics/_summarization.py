@@ -143,7 +143,7 @@ class GenerateAnswersPrompt(PydanticPrompt[SummaryAndQuestions, AnswersGenerated
 
 @dataclass
 class SummarizationScore(MetricWithLLM, SingleTurnMetric):
-    name: str = "summary_score"  # type: ignore
+    name: str = "summary_score"
     max_retries: int = 1
     length_penalty: bool = True
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(

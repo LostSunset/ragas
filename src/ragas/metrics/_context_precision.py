@@ -88,7 +88,7 @@ class LLMContextPrecisionWithReference(MetricWithLLM, SingleTurnMetric):
     context_precision_prompt: Prompt
     """
 
-    name: str = "llm_context_precision_with_reference"  # type: ignore
+    name: str = "llm_context_precision_with_reference"
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(
         default_factory=lambda: {
             MetricType.SINGLE_TURN: {
@@ -150,7 +150,7 @@ class LLMContextPrecisionWithReference(MetricWithLLM, SingleTurnMetric):
         return await self._ascore(row, callbacks)
 
     async def _ascore(
-        self: t.Self,
+        self,
         row: t.Dict,
         callbacks: Callbacks,
     ) -> float:
@@ -198,7 +198,7 @@ class LLMContextPrecisionWithoutReference(LLMContextPrecisionWithReference):
 
 @dataclass
 class NonLLMContextPrecisionWithReference(SingleTurnMetric):
-    name: str = "non_llm_context_precision_with_reference"  # type: ignore
+    name: str = "non_llm_context_precision_with_reference"
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(
         default_factory=lambda: {
             MetricType.SINGLE_TURN: {
@@ -263,7 +263,7 @@ class NonLLMContextPrecisionWithReference(SingleTurnMetric):
 
 @dataclass
 class ContextPrecision(LLMContextPrecisionWithReference):
-    name: str = "context_precision"  # type: ignore
+    name: str = "context_precision"
 
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
@@ -279,7 +279,7 @@ class ContextPrecision(LLMContextPrecisionWithReference):
 
 @dataclass
 class ContextUtilization(LLMContextPrecisionWithoutReference):
-    name: str = "context_utilization"  # type: ignore
+    name: str = "context_utilization"
 
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
