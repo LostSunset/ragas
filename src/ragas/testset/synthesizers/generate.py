@@ -10,11 +10,7 @@ from langchain_core.callbacks import BaseCallbackManager
 from ragas._analytics import TestsetGenerationEvent, track
 from ragas.callbacks import new_group
 from ragas.cost import TokenUsageParser
-from ragas.embeddings.base import (
-    BaseRagasEmbeddings,
-    LangchainEmbeddingsWrapper,
-    LlamaIndexEmbeddingsWrapper,
-)
+from ragas.embeddings.base import BaseRagasEmbeddings, LlamaIndexEmbeddingsWrapper
 from ragas.executor import Executor
 from ragas.llms import BaseRagasLLM, LangchainLLMWrapper, LlamaIndexLLMWrapper
 from ragas.run_config import RunConfig
@@ -28,7 +24,6 @@ from ragas.testset.transforms import Transforms, apply_transforms, default_trans
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
     from langchain_core.documents import Document as LCDocument
-    from langchain_core.embeddings.embeddings import Embeddings as LangchainEmbeddings
     from langchain_core.language_models import BaseLanguageModel as LangchainLLM
     from llama_index.core.base.embeddings.base import (
         BaseEmbedding as LlamaIndexEmbedding,
@@ -55,14 +50,11 @@ class TestsetGenerator:
     ----------
     llm : BaseRagasLLM
         The language model to use for the generation process.
-    embedding_model: BaseRagasEmbeddings
-        Embedding model for generation process.
     knowledge_graph : KnowledgeGraph, default empty
         The knowledge graph to use for the generation process.
     """
 
     llm: BaseRagasLLM
-    embedding_model: BaseRagasEmbeddings
     knowledge_graph: KnowledgeGraph = field(default_factory=KnowledgeGraph)
     persona_list: t.Optional[t.List[Persona]] = None
 
@@ -70,7 +62,6 @@ class TestsetGenerator:
     def from_langchain(
         cls,
         llm: LangchainLLM,
-        embedding_model: LangchainEmbeddings,
         knowledge_graph: t.Optional[KnowledgeGraph] = None,
     ) -> TestsetGenerator:
         """
@@ -79,7 +70,6 @@ class TestsetGenerator:
         knowledge_graph = knowledge_graph or KnowledgeGraph()
         return cls(
             LangchainLLMWrapper(llm),
-            LangchainEmbeddingsWrapper(embedding_model),
             knowledge_graph,
         )
 
@@ -87,7 +77,6 @@ class TestsetGenerator:
     def from_llama_index(
         cls,
         llm: LlamaIndexLLM,
-        embedding_model: LlamaIndexEmbedding,
         knowledge_graph: t.Optional[KnowledgeGraph] = None,
     ) -> TestsetGenerator:
         """
@@ -96,7 +85,6 @@ class TestsetGenerator:
         knowledge_graph = knowledge_graph or KnowledgeGraph()
         return cls(
             LlamaIndexLLMWrapper(llm),
-            LlamaIndexEmbeddingsWrapper(embedding_model),
             knowledge_graph,
         )
 
@@ -157,17 +145,16 @@ class TestsetGenerator:
                        Provide an LLM on TestsetGenerator instantiation or as an argument for transforms_llm parameter.
                        Alternatively you can provide your own transforms through the `transforms` parameter."""
             )
-        if not self.embedding_model and not transforms_embedding_model:
+        if not transforms_embedding_model:
             raise ValueError(
-                """An embedding client was not provided.
-                       Provide an embedding model on TestsetGenerator instantiation or as an argument for transforms_llm parameter.
-                       Alternatively you can provide your own transforms through the `transforms` parameter."""
+                """An embedding client was not provided. Provide an embedding through the transforms_embedding_model parameter. Alternatively you can provide your own transforms through the `transforms` parameter."""
             )
 
         if not transforms:
             transforms = default_transforms(
+                documents=list(documents),
                 llm=transforms_llm or self.llm,
-                embedding_model=transforms_embedding_model or self.embedding_model,
+                embedding_model=transforms_embedding_model,
             )
 
         # convert the documents to Ragas nodes
@@ -221,9 +208,9 @@ class TestsetGenerator:
             raise ValueError(
                 "An llm client was not provided. Provide an LLM on TestsetGenerator instantiation or as an argument for transforms_llm parameter. Alternatively you can provide your own transforms through the `transforms` parameter."
             )
-        if not self.embedding_model and not transforms_embedding_model:
+        if not transforms_embedding_model:
             raise ValueError(
-                "An embedding client was not provided. Provide an embedding model on TestsetGenerator instantiation or as an argument for transforms_llm parameter. Alternatively you can provide your own transforms through the `transforms` parameter."
+                "An embedding client was not provided. Provide an embedding through the transforms_embedding_model parameter. Alternatively you can provide your own transforms through the `transforms` parameter."
             )
 
         if not transforms:
@@ -231,13 +218,11 @@ class TestsetGenerator:
                 llm_for_transforms = self.llm
             else:
                 llm_for_transforms = LlamaIndexLLMWrapper(transforms_llm)
-            if transforms_embedding_model is None:
-                embedding_model_for_transforms = self.embedding_model
-            else:
-                embedding_model_for_transforms = LlamaIndexEmbeddingsWrapper(
-                    transforms_embedding_model
-                )
+            embedding_model_for_transforms = LlamaIndexEmbeddingsWrapper(
+                transforms_embedding_model
+            )
             transforms = default_transforms(
+                documents=[LCDocument(page_content=doc.text) for doc in documents],
                 llm=llm_for_transforms,
                 embedding_model=embedding_model_for_transforms,
             )
@@ -326,7 +311,9 @@ class TestsetGenerator:
         if run_config is not None:
             self.llm.set_run_config(run_config)
 
-        query_distribution = query_distribution or default_query_distribution(self.llm)
+        query_distribution = query_distribution or default_query_distribution(
+            self.llm, self.knowledge_graph
+        )
         callbacks = callbacks or []
 
         # dict to store any callbacks we define
