@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import typing as t
 from collections import Counter
-from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 
@@ -19,6 +18,7 @@ from ragas.prompt import PydanticPrompt
 if t.TYPE_CHECKING:
     from langchain_core.callbacks.base import Callbacks
 
+    from ragas.llms import BaseRagasLLM
 
 logger = logging.getLogger(__name__)
 
@@ -29,58 +29,48 @@ class AspectCriticOutput(BaseModel):
 
 
 class AspectCriticInput(BaseModel):
-    user_input: str = Field(description="The input to the model")
-    response: str = Field(description="The response from the model")
-    criteria: str = Field(description="The criteria to evaluate the response")
+    user_input: t.Optional[str] = Field(
+        description="The input to the llm system", default=None
+    )
+    response: t.Optional[str] = Field(
+        description="The response from the llm system", default=None
+    )
+    retrieved_contexts: t.Optional[t.List[str]] = Field(
+        description="The retrieved contexts from the llm system", default=None
+    )
+    reference_contexts: t.Optional[t.List[str]] = Field(
+        description="The reference contexts for the evaluation", default=None
+    )
+    reference: t.Optional[str] = Field(
+        description="The reference answer for evaluation", default=None
+    )
 
 
 class MultiTurnAspectCriticInput(BaseModel):
-    user_input: str = Field(description="The input to the model")
-    criteria: str = Field(description="The criteria to evaluate the response")
+    user_input: t.Optional[str] = Field(
+        description="The input to the model", default=None
+    )
+    reference: t.Optional[str] = Field(
+        description="The reference response", default=None
+    )
 
 
 class SingleTurnAspectCriticPrompt(
     PydanticPrompt[AspectCriticInput, AspectCriticOutput]
 ):
-    instruction = "Given a input and response. Evaluate the submission only using the given criteria. Use only 'Yes' (1) and 'No' (0) as verdict."
+    instruction = ""
     input_model = AspectCriticInput
     output_model = AspectCriticOutput
-    examples = [
-        (
-            AspectCriticInput(
-                user_input="Who was the director of Los Alamos Laboratory?",
-                response="Einstein was the director of Los Alamos Laboratory.",
-                criteria="Is the output written in perfect grammar",
-            ),
-            AspectCriticOutput(
-                reason="the criteria for evaluation is whether the output is written in perfect grammar. In this case, the output is grammatically correct.",
-                verdict=1,
-            ),
-        )
-    ]
 
 
 class MultiTurnAspectCriticPrompt(
     PydanticPrompt[MultiTurnAspectCriticInput, AspectCriticOutput]
 ):
-    instruction = "Given an interaction between Human, AI and Tools evaluate the interaction using the given criteria. Use only 'Yes' (1) and 'No' (0) as verdict."
+    instruction = ""
     input_model = MultiTurnAspectCriticInput
     output_model = AspectCriticOutput
-    examples = [
-        (
-            MultiTurnAspectCriticInput(
-                user_input="""Human: Hey, book a table at the nearest best Chinese restaurant for 8:00pm\nAI: Sure, let me find the best options for you.\nTools:\n  restaurant_search: {'cuisine': 'Chinese', 'time': '8:00pm'}\nToolOutput: Found a few options: 1. Golden Dragon, 2. Jade Palace\nAI: I found some great options: Golden Dragon and Jade Palace. Which one would you prefer?\nHuman: Let's go with Golden Dragon.\nAI: Great choice! I'll book a table for 8:00pm at Golden Dragon.\nTools:\n  restaurant_book: {'name': 'Golden Dragon', 'time': '8:00pm'}\nToolOutput: Table booked at Golden Dragon for 8:00pm.\nAI: Your table at Golden Dragon is booked for 8:00pm. Enjoy your meal!\nHuman: thanks""",
-                criteria="Does the AI use helpful language to guide the user through the interaction?",
-            ),
-            AspectCriticOutput(
-                reason="The criteria for evaluation is whether the AI uses helpful language to guide the user through the interaction. In this case, the AI uses helpful language to guide the user through the interaction.",
-                verdict=1,
-            ),
-        )
-    ]
 
 
-@dataclass
 class AspectCritic(MetricWithLLM, SingleTurnMetric, MultiTurnMetric):
     """
     Judges the submission to give binary results using the criteria specified
@@ -98,45 +88,54 @@ class AspectCritic(MetricWithLLM, SingleTurnMetric, MultiTurnMetric):
         made using majority vote.
     """
 
-    name: str = field(default="", repr=True)
-    _required_columns: t.Dict[MetricType, t.Set[str]] = field(
-        default_factory=lambda: {
+    def __init__(
+        self,
+        name: str,
+        definition: str,
+        llm: t.Optional[BaseRagasLLM] = None,
+        required_columns: t.Optional[t.Dict[MetricType, t.Set[str]]] = None,
+        single_turn_prompt: t.Optional[PydanticPrompt] = None,
+        multi_turn_prompt: t.Optional[PydanticPrompt] = None,
+        strictness: int = 1,
+        max_retries: int = 1,
+    ):
+        self._required_columns = required_columns or {
             MetricType.SINGLE_TURN: {
-                "user_input",
-                "response",
+                "user_input:optional",
+                "response:optional",
                 "retrieved_contexts:optional",
+                "reference:optional",
+                "reference_contexts:optional",
             },
             MetricType.MULTI_TURN: {
-                "user_input",
+                "user_input:optional",
+                "reference:optional",
             },
         }
-    )
-    single_turn_prompt: PydanticPrompt = field(
-        default_factory=lambda: SingleTurnAspectCriticPrompt()
-    )
-    multi_turn_prompt: PydanticPrompt = field(
-        default_factory=lambda: MultiTurnAspectCriticPrompt()
-    )
-    definition: str = field(
-        default="check if the response to the user input is correct", repr=True
-    )
-    strictness: int = field(default=1, repr=False)
-    max_retries: int = 1
+        super().__init__(
+            name=name,
+            _required_columns=self._required_columns,
+            llm=llm,
+        )
 
-    def __post_init__(self):
-        if self.name == "":
-            raise ValueError(
-                f"{self.__class__.__name__}.__init__() missing required keyword argument: `name`"
-            )
-        if self.definition == "":
-            raise ValueError(
-                f"{self.__class__.__name__}.__init__() missing required keyword argument: `definition`"
-            )
+        self.definition = definition
+        self.single_turn_prompt = single_turn_prompt or SingleTurnAspectCriticPrompt()
+        self.multi_turn_prompt = multi_turn_prompt or MultiTurnAspectCriticPrompt()
+        self.max_retries = max_retries
+
+        # update the instruction for the prompts with the definition
+        instruction = f"Evaluate the Input based on the criterial defined. Use only 'Yes' (1) and 'No' (0) as verdict.\nCriteria Definition: {self.definition}"
+        self.single_turn_prompt.instruction = instruction
+        self.multi_turn_prompt.instruction = instruction
 
         # ensure odd number of checks to avoid tie in majority vote.
+        self.strictness = strictness
         self.strictness = (
             self.strictness if self.strictness % 2 != 0 else self.strictness + 1
         )
+
+    def __repr__(self) -> str:
+        return f"{self.name}(definition='{self.definition}', required_columns={self.required_columns}, llm={self.llm})"
 
     def _compute_score(
         self, safe_loaded_responses: t.List[AspectCriticOutput]
@@ -159,21 +158,18 @@ class AspectCritic(MetricWithLLM, SingleTurnMetric, MultiTurnMetric):
     async def _ascore(self, row: t.Dict, callbacks: Callbacks) -> float:
         assert self.llm is not None, "set LLM before use"
 
-        user_input, context, response = (
-            row["user_input"],
-            row.get("retrieved_contexts"),
-            row["response"],
-        )
-
-        if context is not None:
-            if isinstance(context, list):
-                context = "\n".join(context)
-            user_input = f"`user_input`: {user_input} Answer using `retrieved context`: {context}"
+        user_input = row.get("user_input")
+        response = row.get("response")
+        context = row.get("retrieved_contexts")
+        reference = row.get("reference")
+        reference_contexts = row.get("reference_contexts")
 
         prompt_input = AspectCriticInput(
             user_input=user_input,
             response=response,
-            criteria=self.definition,
+            retrieved_contexts=context,
+            reference=reference,
+            reference_contexts=reference_contexts,
         )
 
         response = await self.single_turn_prompt.generate(
@@ -192,146 +188,6 @@ class AspectCritic(MetricWithLLM, SingleTurnMetric, MultiTurnMetric):
         interaction = sample.pretty_repr()
         prompt_input = MultiTurnAspectCriticInput(
             user_input=interaction,
-            criteria=self.definition,
-        )
-        response = await self.multi_turn_prompt.generate(
-            data=prompt_input,
-            llm=self.llm,
-            callbacks=callbacks,
-        )
-        return self._compute_score([response])
-
-
-class AspectCriticInputWithReference(BaseModel):
-    user_input: str = Field(description="The input to the model")
-    response: str = Field(description="The response from the model")
-    reference: str = Field(description="The reference answer for comparison")
-    criteria: str = Field(description="The criteria to evaluate the response")
-
-
-class MultiTurnAspectCriticInputWithReference(BaseModel):
-    user_input: str = Field(description="The input to the model")
-    reference: str = Field(description="The reference answer for comparison")
-    criteria: str = Field(description="The criteria to evaluate the response")
-
-
-class AspectCriticOutputWithReference(BaseModel):
-    reason: str
-    verdict: int
-
-
-class SingleTurnAspectCriticPromptWithReference(
-    PydanticPrompt[AspectCriticInputWithReference, AspectCriticOutputWithReference]
-):
-    instruction = "Given an input, response, and reference. Evaluate the submission only using the given criteria. Use only 'Yes' (1) and 'No' (0) as verdict."
-    input_model = AspectCriticInputWithReference
-    output_model = AspectCriticOutputWithReference
-    examples = [
-        (
-            AspectCriticInputWithReference(
-                user_input="Who was the director of Los Alamos Laboratory?",
-                response="Einstein was the director of Los Alamos Laboratory.",
-                reference="J. Robert Oppenheimer was the director of Los Alamos Laboratory.",
-                criteria="Is the output written in perfect grammar",
-            ),
-            AspectCriticOutputWithReference(
-                reason="The criteria for evaluation is whether the output is written in perfect grammar. In this case, the output is grammatically correct.",
-                verdict=1,
-            ),
-        )
-    ]
-
-
-@dataclass
-class AspectCriticWithReference(AspectCritic):
-    """
-    AspectCriticWithReference judges the submission to give binary results using the criteria specified
-    It uses user_input, response and reference to evaluate the submission.
-
-    Attributes
-    ----------
-    name: str
-        name of the metrics
-    definition: str
-        criteria to judge the submission, example "Is the submission spreading
-        fake information?"
-    strictness: int
-        The number of times self consistency checks is made. Final judgement is
-        made using majority vote.
-    """
-
-    _required_columns: t.Dict[MetricType, t.Set[str]] = field(
-        default_factory=lambda: {
-            MetricType.SINGLE_TURN: {
-                "user_input",
-                "response",
-                "reference",
-                "retrieved_contexts:optional",
-            },
-            MetricType.MULTI_TURN: {
-                "user_input",
-                "reference",
-            },
-        }
-    )
-    definition: str = field(
-        default="check if response is similar to reference", repr=True
-    )
-    single_turn_prompt: PydanticPrompt = field(
-        default_factory=lambda: SingleTurnAspectCriticPromptWithReference()
-    )
-
-    multi_turn_prompt: PydanticPrompt = field(
-        default_factory=lambda: MultiTurnAspectCriticPrompt()
-    )
-
-    async def _ascore(self, row: t.Dict, callbacks: Callbacks) -> float:
-        
-        if self.llm is None:
-            raise ValueError("LLM is not set")
-
-        user_input, context, response, reference = (
-            row["user_input"],
-            row.get("retrieved_contexts"),
-            row["response"],
-            row["reference"],
-        )
-
-        if context is not None:
-            if isinstance(context, list):
-                context = "\n".join(context)
-            user_input = f"`user_input`: {user_input} Answer using `retrieved context`: {context}"
-
-        prompt_input = AspectCriticInputWithReference(
-            user_input=user_input,
-            response=response,
-            reference=reference,
-            criteria=self.definition,
-        )
-
-        response = await self.single_turn_prompt.generate(
-            data=prompt_input,
-            llm=self.llm,
-            callbacks=callbacks,
-        )
-
-        return self._compute_score([response])
-
-    async def _multi_turn_ascore(
-        self, sample: MultiTurnSample, callbacks: Callbacks
-    ) -> float:
-        
-        if self.llm is None:
-            raise ValueError("LLM is not set")
-        
-        if sample.reference is None:
-            raise ValueError("Reference is not set")
-
-        interaction = sample.pretty_repr()
-        prompt_input = MultiTurnAspectCriticInputWithReference(
-            user_input=interaction,
-            reference=sample.reference,
-            criteria=self.definition,
         )
         response = await self.multi_turn_prompt.generate(
             data=prompt_input,
