@@ -6,6 +6,7 @@ import typing as t
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
+from uuid import UUID
 
 import numpy as np
 from datasets import Dataset as HFDataset
@@ -13,8 +14,10 @@ from pydantic import BaseModel, field_validator
 
 from ragas.callbacks import ChainRunEncoder, parse_run_traces
 from ragas.cost import CostCallbackHandler
+from ragas.exceptions import UploadException
 from ragas.messages import AIMessage, HumanMessage, ToolCall, ToolMessage
-from ragas.utils import RAGAS_API_URL, safe_nanmean
+from ragas.sdk import RAGAS_API_URL, RAGAS_APP_URL, upload_packet
+from ragas.utils import safe_nanmean
 
 if t.TYPE_CHECKING:
     from pathlib import Path
@@ -42,6 +45,13 @@ class BaseSample(BaseModel):
         Get the features of the sample that are not None.
         """
         return list(self.to_dict().keys())
+
+    def to_string(self) -> str:
+        """
+        Get the string representation of the sample.
+        """
+        sample_dict = self.to_dict()
+        return "".join(f"\n{key}:\n\t{val}\n" for key, val in sample_dict.items())
 
 
 class SingleTurnSample(BaseSample):
@@ -378,6 +388,7 @@ class EvaluationResult:
     cost_cb: t.Optional[CostCallbackHandler] = None
     traces: t.List[t.Dict[str, t.Any]] = field(default_factory=list)
     ragas_traces: t.Dict[str, ChainRun] = field(default_factory=dict, repr=False)
+    run_id: t.Optional[UUID] = None
 
     def __post_init__(self):
         # transform scores from list of dicts to dict of lists
@@ -395,7 +406,8 @@ class EvaluationResult:
                 values.append(value + 1e-10)
 
         # parse the traces
-        self.traces = parse_run_traces(self.ragas_traces)
+        run_id = str(self.run_id) if self.run_id is not None else None
+        self.traces = parse_run_traces(self.ragas_traces, run_id)
 
     def __repr__(self) -> str:
         score_strs = [f"'{k}': {v:0.4f}" for k, v in self._repr_dict.items()]
@@ -499,8 +511,6 @@ class EvaluationResult:
     def upload(self, base_url: str = RAGAS_API_URL, verbose: bool = True) -> str:
         from datetime import datetime, timezone
 
-        import requests
-
         timestamp = datetime.now(timezone.utc).isoformat()
         root_trace = [
             trace for trace in self.ragas_traces.values() if trace.parent_run_id is None
@@ -513,30 +523,38 @@ class EvaluationResult:
             },
             cls=ChainRunEncoder,
         )
-
-        response = requests.post(
-            f"{base_url}/alignment/evaluation",
-            data=packet,
-            headers={"Content-Type": "application/json"},
+        response = upload_packet(
+            path="/alignment/evaluation",
+            data_json_string=packet,
+            base_url=base_url,
         )
 
-        if response.status_code != 200:
-            raise Exception(f"Failed to upload results: {response.text}")
-
+        # check status codes
         evaluation_endpoint = (
-            f"https://app.ragas.io/alignment/evaluation/{root_trace.run_id}"
+            f"{RAGAS_APP_URL}/dashboard/alignment/evaluation/{root_trace.run_id}"
         )
+        if response.status_code == 409:
+            # this evalution already exists
+            if verbose:
+                print(f"Evaluation run already exists. View at {evaluation_endpoint}")
+            return evaluation_endpoint
+        elif response.status_code != 200:
+            # any other error
+            raise UploadException(
+                status_code=response.status_code,
+                message=f"Failed to upload results: {response.text}",
+            )
+
         if verbose:
             print(f"Evaluation results uploaded! View at {evaluation_endpoint}")
         return evaluation_endpoint
-
 
 
 class PromptAnnotation(BaseModel):
     prompt_input: t.Dict[str, t.Any]
     prompt_output: t.Dict[str, t.Any]
     is_accepted: bool
-    edited_output: t.Union[t.Dict[str, t.Any], None]
+    edited_output: t.Optional[t.Dict[str, t.Any]] = None
 
     def __getitem__(self, key):
         return getattr(self, key)
@@ -554,7 +572,6 @@ class SampleAnnotation(BaseModel):
 
 
 class MetricAnnotation(BaseModel):
-
     root: t.Dict[str, t.List[SampleAnnotation]]
 
     def __getitem__(self, key):
@@ -562,7 +579,6 @@ class MetricAnnotation(BaseModel):
 
     @classmethod
     def from_json(cls, path, metric_name: t.Optional[str]) -> "MetricAnnotation":
-
         dataset = json.load(open(path))
         if metric_name is not None and metric_name not in dataset:
             raise ValueError(f"Split {metric_name} not found in the dataset.")
@@ -604,7 +620,6 @@ class SingleMetricAnnotation(BaseModel):
 
     @classmethod
     def from_json(cls, path) -> "SingleMetricAnnotation":
-
         dataset = json.load(open(path))
 
         return cls(
@@ -613,7 +628,6 @@ class SingleMetricAnnotation(BaseModel):
         )
 
     def filter(self, function: t.Optional[t.Callable] = None):
-
         if function is None:
             function = lambda x: True  # noqa: E731
 
@@ -787,3 +801,13 @@ class SingleMetricAnnotation(BaseModel):
                 all_batches.append(batch)
 
         return all_batches
+
+    def get_prompt_annotations(self) -> t.Dict[str, t.List[PromptAnnotation]]:
+        """
+        Get all the prompt annotations for each prompt as a list.
+        """
+        prompt_annotations = defaultdict(list)
+        for sample in self.samples:
+            for prompt_name, prompt_annotation in sample.prompts.items():
+                prompt_annotations[prompt_name].append(prompt_annotation)
+        return prompt_annotations
