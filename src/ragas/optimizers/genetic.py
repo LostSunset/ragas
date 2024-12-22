@@ -377,7 +377,7 @@ class GeneticOptimizer(Optimizer):
         )
         improved_candidates = []
         dataset = dataset.filter(lambda x: x["is_accepted"])
-
+        sample_size = min(sample_size, len(dataset))
         exec = Executor(
             desc="Feedback Mutation",
             raise_exceptions=raise_exceptions,
@@ -519,9 +519,8 @@ class GeneticOptimizer(Optimizer):
                         ),
                         expected_output=dataset[idx]["prompts"][prompt_name][
                             "edited_output"
-                        ] or dataset[idx]["prompts"][prompt_name][
-                            "prompt_output"
-                        ],
+                        ]
+                        or dataset[idx]["prompts"][prompt_name]["prompt_output"],
                     )
                     for idx in indices
                 ]
