@@ -1,6 +1,6 @@
 ## Factual Correctness
 
-`FactualCorrectness` is a metric that compares and evaluates the factual accuracy of the generated `response` with the `reference`. This metric is used to determine the extent to which the generated response aligns with the reference. The factual correctness score ranges from 0 to 1, with higher values indicating better performance. To measure the alignment between the response and the reference, the metric uses the LLM for first break down the response and reference into claims and then uses natural language inference to determine the factual overlap between the response and the reference. Factual overlap is quantified using precision, recall, and F1 score, which can be controlled using the `mode` parameter.
+`FactualCorrectness` is a metric that compares and evaluates the factual accuracy of the generated `response` with the `reference`. This metric is used to determine the extent to which the generated response aligns with the reference. The factual correctness score ranges from 0 to 1, with higher values indicating better performance. To measure the alignment between the response and the reference, the metric uses the LLM to first break down the response and reference into claims and then uses natural language inference to determine the factual overlap between the response and the reference. Factual overlap is quantified using precision, recall, and F1 score, which can be controlled using the `mode` parameter.
 
 The formula for calculating True Positive (TP), False Positive (FP), and False Negative (FN) is as follows:
 
@@ -42,15 +42,22 @@ sample = SingleTurnSample(
     reference="The Eiffel Tower is located in Paris. I has a height of 1000ft."
 )
 
-scorer = FactualCorrectness()
-scorer.llm = openai_model
+scorer = FactualCorrectness(llm = evaluator_llm)
 await scorer.single_turn_ascore(sample)
+```
+Output
+```
+0.67
 ```
 
 By default, the mode is set to `F1`, you can change the mode to `precision` or `recall` by setting the `mode` parameter.
 
 ```python
-scorer = FactualCorrectness(mode="precision")
+scorer = FactualCorrectness(llm = evaluator_llm, mode="precision")
+```
+Output
+```
+1.0
 ```
 
 ### Controlling the Number of Claims
@@ -62,6 +69,10 @@ Each sentence in the response and reference can be broken down into one or more 
 
 ```python
 scorer = FactualCorrectness(mode="precision",atomicity="low")
+```
+Output
+```
+1.0
 ```
 
 

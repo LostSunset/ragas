@@ -1,6 +1,6 @@
 While evaluating your LLM application with Ragas metrics, you may find yourself needing to create a custom metric. This guide will help you do just that. When building your custom metric with Ragas, you also benefit from features such as asynchronous processing, metric language adaptation, and aligning LLM metrics with human evaluators.
 
-It assumes that you are already familiar with the concepts of [Metrics](/concepts/metrics/overview/) and [Prompt Objects](/concepts/components/prompt) in Ragas. If not, please review those topics before proceeding.
+It assumes that you are already familiar with the concepts of [Metrics](/concepts/metrics/overview/index.md) and [Prompt Objects](/concepts/components/prompt.md) in Ragas. If not, please review those topics before proceeding.
 
 For the sake of this tutorial, let's build a custom metric that scores the refusal rate in applications. 
 
@@ -13,7 +13,7 @@ $$
 \text{Refusal rate} = \frac{\text{Total number of refused requests}}{\text{Total number of human requests}}
 $$
 
-**Step 2**: Decide how are you going to derive this information from the sample. Here I am going to use LLM to do it, ie to check weather the request was refused or answered. You may use Non LLM based methods too. Since I am using LLM based method, this would become an LLM based metric. 
+**Step 2**: Decide how are you going to derive this information from the sample. Here I am going to use LLM to do it, ie to check whether the request was refused or answered. You may use Non LLM based methods too. Since I am using LLM based method, this would become an LLM based metric.
 
 **Step 3**: Decide if your metric should work in Single Turn and or Multi Turn data. 
 

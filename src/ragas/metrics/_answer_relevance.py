@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import typing as t
 from dataclasses import dataclass, field
@@ -136,14 +137,15 @@ class ResponseRelevancy(MetricWithLLM, MetricWithEmbeddings, SingleTurnMetric):
         assert self.llm is not None, "LLM is not set"
 
         prompt_input = ResponseRelevanceInput(response=row["response"])
-        responses = []
-        for _ in range(self.strictness):
-            response = await self.question_generation.generate(
+        tasks = [
+            self.question_generation.generate(
                 data=prompt_input,
                 llm=self.llm,
                 callbacks=callbacks,
             )
-            responses.append(response)
+            for _ in range(self.strictness)
+        ]
+        responses = await asyncio.gather(*tasks)
 
         return self._calculate_score(responses, row)
 

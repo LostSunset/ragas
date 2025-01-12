@@ -26,6 +26,10 @@ scorer =  AspectCritic(
     )
 await scorer.single_turn_ascore(sample)
 ```
+Output
+```
+0
+```
 
 ### How it works
 
@@ -53,7 +57,7 @@ from ragas.metrics import SimpleCriteriaScore
 
 
 sample = SingleTurnSample(
-    user_input="Where is the Eiffel Tower loc
+    user_input="Where is the Eiffel Tower located?",
     response="The Eiffel Tower is located in Paris.",
     reference="The Eiffel Tower is located in Egypt"
 )
@@ -66,53 +70,100 @@ scorer =  SimpleCriteriaScore(
 
 await scorer.single_turn_ascore(sample)
 ```
+Output
+```
+0
+```
 
 ## Rubrics based criteria scoring
 
-Domain specific evaluation metric is a rubric-based evaluation metric that is used to evaluate responses on a specific domain. The rubric consists of descriptions for each score, typically ranging from 1 to 5. The response here is evaluation and scored using the LLM using description specified in the rubric. This metric also have reference free and reference based variations.
+The Rubric-Based Criteria Scoring Metric is used to do evaluations based on user-defined rubrics. Each rubric defines a detailed score description, typically ranging from 1 to 5. The LLM assesses and scores responses according to these descriptions, ensuring a consistent and objective evaluation. 
+!!! note
+    When defining rubrics, ensure consistency in terminology to match the schema used in the `SingleTurnSample` or `MultiTurnSample` respectively. For instance, if the schema specifies a term such as reference, ensure that the rubrics use the same term instead of alternatives like ground truth.
 
 #### Example
 ```python
 from ragas.dataset_schema import SingleTurnSample
 from ragas.metrics import RubricsScore
+
 sample = SingleTurnSample(
-    user_input="Where is the Eiffel Tower located?",
-    response="The Eiffel Tower is located in Paris.",
-    reference="The Eiffel Tower is located in Paris.",
+    response="The Earth is flat and does not orbit the Sun.",
+    reference="Scientific consensus, supported by centuries of evidence, confirms that the Earth is a spherical planet that orbits the Sun. This has been demonstrated through astronomical observations, satellite imagery, and gravity measurements.",
 )
+
 rubrics = {
-    "score1_description": "The response is incorrect, irrelevant, or does not align with the ground truth.",
-    "score2_description": "The response partially matches the ground truth but includes significant errors, omissions, or irrelevant information.",
-    "score3_description": "The response generally aligns with the ground truth but may lack detail, clarity, or have minor inaccuracies.",
-    "score4_description": "The response is mostly accurate and aligns well with the ground truth, with only minor issues or missing details.",
-    "score5_description": "The response is fully accurate, aligns completely with the ground truth, and is clear and detailed.",
+    "score1_description": "The response is entirely incorrect and fails to address any aspect of the reference.",
+    "score2_description": "The response contains partial accuracy but includes major errors or significant omissions that affect its relevance to the reference.",
+    "score3_description": "The response is mostly accurate but lacks clarity, thoroughness, or minor details needed to fully address the reference.",
+    "score4_description": "The response is accurate and clear, with only minor omissions or slight inaccuracies in addressing the reference.",
+    "score5_description": "The response is completely accurate, clear, and thoroughly addresses the reference without any errors or omissions.",
 }
-scorer =  RubricsScore(rubrics=rubrics, llm=evaluator_llm)
+
+
+scorer = RubricsScore(rubrics=rubrics, llm=evaluator_llm)
 await scorer.single_turn_ascore(sample)
+```
+
+Output
+```
+1
 ```
 
 ## Instance Specific rubrics criteria scoring
 
-Instance specific evaluation metric is a rubric-based evaluation metric that is used to evaluate responses on a specific instance, ie each instance to be evaluated is annotated with a rubric based evaluation criteria. The rubric consists of descriptions for each score, typically ranging from 1 to 5. The response here is evaluation and scored using the LLM using description specified in the rubric. This metric also have reference free and reference based variations. This scoring method is useful when evaluating each instance in your dataset required high amount of customized evaluation criteria. 
+Instance Specific Evaluation Metric is a rubric-based method used to evaluate each item in a dataset individually. To use this metric, you need to provide a rubric along with the items you want to evaluate. 
+
+!!! note
+    This differs from the `Rubric Based Criteria Scoring Metric`, where a single rubric is applied to uniformly evaluate all items in the dataset. In the `Instance-Specific Evaluation Metric`, you decide which rubric to use for each item. It's like the difference between giving the entire class the same quiz (rubric-based) and creating a personalized quiz for each student (instance-specific).  
 
 #### Example
 ```python
-from ragas.dataset_schema import SingleTurnSample
-from ragas.metrics import InstanceRubricsScore
+dataset = [
+    # Relevance to Query
+    {
+        "user_query": "How do I handle exceptions in Python?",
+        "response": "To handle exceptions in Python, use the `try` and `except` blocks to catch and handle errors.",
+        "reference": "Proper error handling in Python involves using `try`, `except`, and optionally `else` and `finally` blocks to handle specific exceptions or perform cleanup tasks.",
+        "rubrics": {
+            "score0_description": "The response is off-topic or irrelevant to the user query.",
+            "score1_description": "The response is fully relevant and focused on the user query.",
+        },
+    },
+    # Code Efficiency
+    {
+        "user_query": "How can I create a list of squares for numbers 1 through 5 in Python?",
+        "response": """
+            # Using a for loop
+            squares = []
+            for i in range(1, 6):
+                squares.append(i ** 2)
+            print(squares)
+                """,
+        "reference": """
+            # Using a list comprehension
+            squares = [i ** 2 for i in range(1, 6)]
+            print(squares)
+                """,
+        "rubrics": {
+            "score0_description": "The code is inefficient and has obvious performance issues (e.g., unnecessary loops or redundant calculations).",
+            "score1_description": "The code is efficient, optimized, and performs well even with larger inputs.",
+        },
+    },
+]
 
 
-SingleTurnSample(
-    user_input="Where is the Eiffel Tower located?",
-    response="The Eiffel Tower is located in Paris.",
-    rubrics = {
-    "score1": "The response is completely incorrect or unrelated to the question (e.g., 'The Eiffel Tower is in New York.' or talking about something entirely irrelevant).",
-    "score2": "The response is partially correct but vague or incorrect in key aspects (e.g., 'The Eiffel Tower is in France.' without mentioning Paris, or a similar incomplete location).",
-    "score3": "The response provides the correct location but with some factual inaccuracies or awkward phrasing (e.g., 'The Eiffel Tower is in Paris, Germany.' or 'It is located in Paris, which is a country.').",
-    "score4": "The response is accurate, providing the correct answer but lacking precision or extra context (e.g., 'The Eiffel Tower is in Paris, France.' or a minor phrasing issue).",
-    "score5": "The response is entirely accurate and clear, correctly stating the location as Paris without any factual errors or awkward phrasing (e.g., 'The Eiffel Tower is located in Paris.')."
-}
+evaluation_dataset = EvaluationDataset.from_list(dataset)
+
+result = evaluate(
+    dataset=evaluation_dataset,
+    metrics=[InstanceRubrics(llm=evaluator_llm)],
+    llm=evaluator_llm,
 )
 
-scorer =  InstanceRubricsScore(llm=evaluator_llm)
-await scorer.single_turn_ascore(sample)
+result
+```
+Output
+
+```
+{'instance_rubrics': 0.5000}
 ```

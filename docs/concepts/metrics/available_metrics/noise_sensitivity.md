@@ -29,8 +29,12 @@ sample = SingleTurnSample(
     ]
 )
 
-scorer = NoiseSensitivity()
+scorer = NoiseSensitivity(llm=evaluator_llm)
 await scorer.single_turn_ascore(sample)
+```
+Output
+```
+0.3333333333333333
 ```
 
 To calculate noise sensivity of irrelevant context, you can set the `focus` parameter to `irrelevant`.
@@ -53,7 +57,7 @@ await scorer.single_turn_ascore(sample)
         - As the largest institutional investor in India, LIC manages a substantial life fund, contributing to the financial stability of the country.
         
     Irrelevant Retrieval: 
-        - The Indian economy is one of the fastest-growing major economies in the world, thanks to the secors like finance, technology, manufacturing etc.
+        - The Indian economy is one of the fastest-growing major economies in the world, thanks to the sectors like finance, technology, manufacturing etc.
 
 Let's examine how noise sensitivity in relevant context was calculated:
 

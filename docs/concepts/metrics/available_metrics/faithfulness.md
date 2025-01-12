@@ -1,18 +1,23 @@
 ## Faithfulness
 
-`Faithfulness` metric measures the factual consistency of the generated answer against the given context. It is calculated from answer and retrieved context. The answer is scaled to (0,1) range. Higher the better.
+The **Faithfulness** metric measures how factually consistent a `response` is with the `retrieved context`. It ranges from 0 to 1, with higher scores indicating better consistency.  
 
-The generated answer is regarded as faithful if all the claims made in the answer can be inferred from the given context. To calculate this, a set of claims from the generated answer is first identified. Then each of these claims is cross-checked with the given context to determine if it can be inferred from the context. The faithfulness score is given by:
+A response is considered **faithful** if all its claims can be supported by the retrieved context.  
+
+To calculate this:  
+1. Identify all the claims in the response.  
+2. Check each claim to see if it can be inferred from the retrieved context.  
+3. Compute the faithfulness score using the formula:  
 
 $$
-\text{Faithfulness score} = {|\text{Number of claims in the generated answer that can be inferred from given context}| \over |\text{Total number of claims in the generated answer}|}
+\text{Faithfulness Score} = \frac{\text{Number of claims in the response supported by the retrieved context}}{\text{Total number of claims in the response}}
 $$
 
 
 ### Example
 
 ```python
-from ragas.database_schema import SingleTurnSample 
+from ragas.dataset_schema import SingleTurnSample 
 from ragas.metrics import Faithfulness
 
 sample = SingleTurnSample(
@@ -22,8 +27,12 @@ sample = SingleTurnSample(
             "The First AFL–NFL World Championship Game was an American football game played on January 15, 1967, at the Los Angeles Memorial Coliseum in Los Angeles."
         ]
     )
-scorer = Faithfulness()
+scorer = Faithfulness(llm=evaluator_llm)
 await scorer.single_turn_ascore(sample)
+```
+Output
+```
+1.0
 ```
 
 
@@ -32,7 +41,7 @@ await scorer.single_turn_ascore(sample)
 [Vectara's HHEM-2.1-Open](https://vectara.com/blog/hhem-2-1-a-better-hallucination-detection-model/) is a classifier model (T5) that is trained to detect hallucinations from LLM generated text. This model can be used in the second step of calculating faithfulness, i.e. when claims are cross-checked with the given context to determine if it can be inferred from the context. The model is free, small, and open-source, making it very efficient in production use cases. To use the model to calculate faithfulness, you can use the following code snippet:
 
 ```python
-from ragas.database_schema import SingleTurnSample 
+from ragas.dataset_schema import SingleTurnSample 
 from ragas.metrics import FaithfulnesswithHHEM
 
 
@@ -43,7 +52,7 @@ sample = SingleTurnSample(
             "The First AFL–NFL World Championship Game was an American football game played on January 15, 1967, at the Los Angeles Memorial Coliseum in Los Angeles."
         ]
     )
-scorer = FaithfulnesswithHHEM()
+scorer = FaithfulnesswithHHEM(llm=evaluator_llm)
 await scorer.single_turn_ascore(sample)
 
 ```

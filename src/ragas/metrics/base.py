@@ -9,22 +9,20 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from pydantic import ValidationError
-from pysbd import Segmenter
 from tqdm import tqdm
 
 from ragas._analytics import EvaluationEvent, _analytics_batcher
 from ragas.callbacks import ChainType, new_group
-from ragas.dataset_schema import MetricAnnotation, MultiTurnSample, SingleTurnSample
+from ragas.dataset_schema import (
+    MetricAnnotation,
+    MultiTurnSample,
+    SingleTurnSample,
+)
 from ragas.executor import is_event_loop_running
 from ragas.losses import BinaryMetricLoss, MSELoss
 from ragas.prompt import FewShotPydanticPrompt, PromptMixin
 from ragas.run_config import RunConfig
-from ragas.utils import (
-    RAGAS_SUPPORTED_LANGUAGE_CODES,
-    camel_to_snake,
-    deprecated,
-    get_metric_language,
-)
+from ragas.utils import camel_to_snake, deprecated, get_metric_language
 
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
@@ -350,7 +348,8 @@ class MetricWithLLM(Metric, PromptMixin):
 
     def train(
         self,
-        path: str,
+        path: t.Optional[str] = None,
+        run_id: t.Optional[str] = None,
         demonstration_config: t.Optional[DemonstrationConfig] = None,
         instruction_config: t.Optional[InstructionConfig] = None,
         callbacks: t.Optional[Callbacks] = None,
@@ -359,13 +358,57 @@ class MetricWithLLM(Metric, PromptMixin):
         with_debugging_logs=False,
         raise_exceptions: bool = True,
     ) -> None:
+        """
+        Train the metric using local JSON data or annotations from Ragas platform
+
+        Parameters
+        ----------
+        path : str, optional
+            Path to local JSON training data file
+        run_id : str, optional
+            Direct run ID to fetch annotations
+        demonstration_config : DemonstrationConfig, optional
+            Configuration for demonstration optimization
+        instruction_config : InstructionConfig, optional
+            Configuration for instruction optimization
+        callbacks : Callbacks, optional
+            List of callback functions
+        run_config : RunConfig, optional
+            Run configuration
+        batch_size : int, optional
+            Batch size for training
+        with_debugging_logs : bool, default=False
+            Enable debugging logs
+        raise_exceptions : bool, default=True
+            Whether to raise exceptions during training
+
+        Raises
+        ------
+        ValueError
+            If invalid combination of path, and run_id is provided
+        """
+        # Validate input parameters
+        provided_inputs = sum(x is not None for x in [path, run_id])
+        if provided_inputs == 0:
+            raise ValueError("One of path or run_id must be provided")
+        if provided_inputs > 1:
+            raise ValueError("Only one of path or run_id should be provided")
+
         run_config = run_config or RunConfig()
         callbacks = callbacks or []
 
-        # load the dataset from path
-        if not path.endswith(".json"):
-            raise ValueError("Train data must be in json format")
-        dataset = MetricAnnotation.from_json(path, metric_name=self.name)
+        # Load the dataset based on input type
+        if path is not None:
+            if not path.endswith(".json"):
+                raise ValueError("Train data must be in json format")
+            dataset = MetricAnnotation.from_json(path, metric_name=self.name)
+        elif run_id is not None:
+            dataset = MetricAnnotation.from_app(
+                run_id=run_id,
+                metric_name=self.name,
+            )
+        else:
+            raise ValueError("One of path or run_id must be provided")
 
         # only optimize the instruction if instruction_config is provided
         if instruction_config is not None:
@@ -692,24 +735,6 @@ class Ensember:
             verdict_agg.append(item)
 
         return verdict_agg
-
-
-def get_segmenter(
-    language: str = "english", clean: bool = False, char_span: bool = False
-):
-    """
-    Get a sentence segmenter for a given language
-    """
-    language = language.lower()
-    if language not in RAGAS_SUPPORTED_LANGUAGE_CODES:
-        raise ValueError(
-            f"Language '{language}' not supported. Supported languages: {RAGAS_SUPPORTED_LANGUAGE_CODES.keys()}"
-        )
-    return Segmenter(
-        language=RAGAS_SUPPORTED_LANGUAGE_CODES[language],
-        clean=clean,
-        char_span=char_span,
-    )
 
 
 ensembler = Ensember()

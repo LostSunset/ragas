@@ -1,13 +1,13 @@
-# Evaluating your first AI app
+# Evaluate a simple LLM application
 
-The purpose of this guide is to illustrate a simple workflow for testing and evaluating an LLM application with `ragas`. It assumed minimum knowledge in AI application building and evaluation. Please refer to our [installation instruction](./install.md) for installing `ragas`
+The purpose of this guide is to illustrate a simple workflow for testing and evaluating an LLM application with `ragas`. It assumes minimum knowledge in AI application building and evaluation. Please refer to our [installation instruction](./install.md) for installing `ragas`
 
 
 ## Evaluation
 
 In this guide, you will evaluate a **text summarization pipeline**. The goal is to ensure that the output summary accurately captures all the key details specified in the text, such as growth figures, market insights, and other essential information.
 
-`ragas` offers a variety of methods for analyzing the performance of LLM applications, referred to as [metrics](../concepts/metrics/). Each metric requires a predefined set of data points, which it uses to calculate scores that indicate performance.
+`ragas` offers a variety of methods for analyzing the performance of LLM applications, referred to as [metrics](../concepts/metrics/available_metrics/index.md). Each metric requires a predefined set of data points, which it uses to calculate scores that indicate performance.
 
 ### Evaluating using a Non-LLM Metric
 
@@ -171,13 +171,13 @@ Viewing the sample-level results in a CSV file, as shown above, is fine for quic
 
 For this you may sign up and setup [app.ragas.io]() easily. If not, you may use any alternative tools available to you. 
 
-In order to use the [app.ragas.io](http://app.ragas.io) dashboard, you need to have an account on [app.ragas.io](https://app.ragas.io/). If you don't have one, you can sign up for one [here](https://app.ragas.io/login). You will also need to generate a [Ragas API key](https://app.ragas.io/dashboard/settings/app-tokens).
+In order to use the [app.ragas.io](http://app.ragas.io) dashboard, you need to have an account on [app.ragas.io](https://app.ragas.io/). If you don't have one, you can sign up for one [here](https://app.ragas.io/login). You will also need to generate a [Ragas APP token](https://app.ragas.io/dashboard/settings/app-tokens).
 
 Once you have the API key, you can use the `upload()` method to export the results to the dashboard.
 
 ```python
 import os
-os.environ["RAGAS_API_KEY"] = "your_api_key"
+os.environ["RAGAS_APP_TOKEN"] = "your_app_token"
 ```
 
 Now you can view the results in the dashboard by following the link in the output of the `upload()` method.
@@ -203,7 +203,7 @@ To fix these results, ragas provides a way to align the metric with your prefere
 2. **Download**: Save the annotated data using the `Annotated JSON` button in [app.ragas.io](https://app.ragas.io/).
 3. **Train**: Use the annotated data to train your custom metric.
 
-To learn more about this, refer to how to [train your own metric guide](../howtos/customizations/metrics/train_your_own_metric.md)
+To learn more about this, refer to how to [train your own metric guide](./../howtos/customizations/metrics/train_your_own_metric.md)
 
 [Download sample annotated JSON](../_static/sample_annotated_summary.json)
 
@@ -220,5 +220,4 @@ Once trained, you can re-evaluate the same or different test datasets. You shoul
 
 ## Up Next
 
-- [Run ragas metrics for evaluating RAG](rag_evaluation.md)
-- [Generate test data for evaluating RAG](rag_testset_generation.md)
+- [Evaluate a simple RAG application](rag_eval.md)
