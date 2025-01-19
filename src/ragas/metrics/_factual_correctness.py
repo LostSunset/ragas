@@ -257,6 +257,7 @@ class FactualCorrectness(MetricWithLLM, SingleTurnMetric):
         else:
             response_reference = np.array([])
 
+        response_reference = np.array(response_reference, dtype=bool)
         tp = sum(reference_response)
         fp = sum(~reference_response)
         if self.mode != "precision":
